@@ -1,0 +1,248 @@
+/* Camera Monitor — простая тёмная тема без фреймворков */
+:root {
+  --bg: #0f131a;
+  --panel: #171d27;
+  --panel-2: #1d2532;
+  --border: #2a3444;
+  --text: #e8ecf3;
+  --muted: #8b96a8;
+  --accent: #4f8cff;
+  --online: #2ecc71;
+  --connecting: #f1c40f;
+  --reconnecting: #e67e22;
+  --offline: #6b7687;
+  --error: #e74c3c;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.brand {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: inline-block;
+}
+
+.container { max-width: 900px; margin: 24px auto; padding: 0 16px; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.panel-head h2 { margin: 0; font-size: 16px; }
+
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+
+/* ---------- список камер ---------- */
+.camera-list { list-style: none; margin: 0; padding: 0; }
+
+.camera-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.camera-row:last-child { border-bottom: none; }
+
+.camera-row .dot {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  background: var(--offline);
+}
+.camera-row .dot.online { background: var(--online); box-shadow: 0 0 8px var(--online); }
+.camera-row .dot.connecting { background: var(--connecting); }
+.camera-row .dot.reconnecting { background: var(--reconnecting); }
+.camera-row .dot.offline { background: var(--offline); }
+.camera-row .dot.error { background: var(--error); }
+
+.camera-info { flex: 1; min-width: 0; }
+.camera-info a { color: var(--text); text-decoration: none; font-weight: 600; }
+.camera-info a:hover { color: var(--accent); }
+.meta { font-size: 12px; margin-top: 3px; }
+
+.status {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  flex: none;
+}
+.status.online { color: var(--online); background: rgba(46, 204, 113, .12); }
+.status.connecting { color: var(--connecting); background: rgba(241, 196, 15, .12); }
+.status.reconnecting { color: var(--reconnecting); background: rgba(230, 126, 34, .12); }
+.status.offline { color: var(--offline); background: rgba(107, 118, 135, .15); }
+.status.error { color: var(--error); background: rgba(231, 76, 60, .12); }
+
+.actions { display: flex; gap: 8px; flex: none; }
+
+.empty { padding: 32px 0; text-align: center; color: var(--muted); }
+
+/* ---------- кнопки ---------- */
+.btn {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  font-family: inherit;
+}
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.1); }
+.btn.ghost { background: transparent; }
+.btn.danger:hover { border-color: var(--error); color: var(--error); }
+
+/* ---------- модальное окно ---------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+/* display: flex выше перебивает атрибут hidden — возвращаем скрытие явно */
+.modal-backdrop[hidden] {
+  display: none;
+}
+
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 480px;
+  max-width: 100%;
+  padding: 22px;
+  max-height: 90vh;
+  overflow: auto;
+}
+.modal h2 { margin: 0 0 16px; font-size: 18px; }
+
+.field { display: block; margin-bottom: 12px; font-size: 13px; color: var(--muted); }
+.field input, .field select {
+  display: block;
+  width: 100%;
+  margin-top: 5px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-size: 14px;
+  font-family: inherit;
+}
+.field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
+
+.row { display: flex; gap: 12px; }
+.row .field { flex: 1; }
+.row .field.grow { flex: 2; }
+.row .field.port { flex: 0 0 110px; }
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  margin-top: 28px;
+  white-space: nowrap;
+}
+.checkbox-field input { width: auto; margin: 0; }
+
+.modal-actions { display: flex; gap: 10px; margin-top: 16px; align-items: center; }
+.spacer { flex: 1; }
+
+.test-result { border-radius: 8px; padding: 10px 12px; font-size: 14px; margin-top: 8px; }
+.test-result.ok { background: rgba(46, 204, 113, .12); color: var(--online); }
+.test-result.err { background: rgba(231, 76, 60, .12); color: var(--error); }
+.test-result.pending { background: rgba(241, 196, 15, .1); color: var(--connecting); }
+.test-result .details { font-size: 12px; margin-top: 4px; color: var(--muted); }
+
+/* ---------- страница камеры ---------- */
+.view { display: grid; grid-template-columns: 1fr 270px; gap: 16px; max-width: 1100px; }
+
+.video-panel {
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  min-height: 320px;
+}
+.video-panel img { display: block; width: 100%; height: auto; }
+.video-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 16px;
+  background: rgba(0, 0, 0, .8);
+}
+.video-overlay[hidden] {
+  display: none;
+}
+
+.stats { margin: 12px 0; }
+.stats > div {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+.stats dt { color: var(--muted); font-size: 13px; }
+.stats dd { margin: 0; font-size: 13px; font-weight: 600; }
+#status-badge { display: inline-block; margin-bottom: 8px; }
+
+@media (max-width: 800px) {
+  .view { grid-template-columns: 1fr; }
+}

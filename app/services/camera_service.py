@@ -1,0 +1,195 @@
+"""CRUD камер и реальная проверка RTSP-подключения (ffprobe)."""
+import json
+import logging
+import subprocess
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.orm import Session
+
+from app.database.models import Camera
+from app.rtsp.dahua import build_rtsp_url, mask_url
+from app.rtsp.reader import parse_frame_rate
+
+logger = logging.getLogger("app.services.cameras")
+
+
+# ------------------------------------------------------------------- схемы
+
+class CameraCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    nvr_host: str = Field(min_length=1, max_length=255)
+    rtsp_port: int = Field(default=554, ge=1, le=65535)
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=255)
+    channel: int = Field(ge=1, le=64)
+    stream_type: str = Field(pattern="^(main|sub)$")
+    enabled: bool = True
+
+
+class CameraUpdate(BaseModel):
+    """Частичное обновление. Пароль None/пусто — существующий не меняется."""
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    nvr_host: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    rtsp_port: Optional[int] = Field(default=None, ge=1, le=65535)
+    username: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    password: Optional[str] = Field(default=None, max_length=255)
+    channel: Optional[int] = Field(default=None, ge=1, le=64)
+    stream_type: Optional[str] = Field(default=None, pattern="^(main|sub)$")
+    enabled: Optional[bool] = None
+
+
+class CameraOut(BaseModel):
+    """Ответ API. Пароль никогда не возвращается — только факт его наличия."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    nvr_host: str
+    rtsp_port: int
+    username: str
+    channel: int
+    stream_type: str
+    enabled: bool
+    has_password: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ConnectionTestRequest(BaseModel):
+    """Параметры для проверки подключения без сохранения камеры.
+
+    password может быть пустым, если передан camera_id существующей камеры —
+    тогда пароль берётся из базы (для формы редактирования).
+    """
+    nvr_host: str = Field(min_length=1, max_length=255)
+    rtsp_port: int = Field(default=554, ge=1, le=65535)
+    username: str = Field(min_length=1, max_length=100)
+    password: Optional[str] = Field(default=None, max_length=255)
+    camera_id: Optional[int] = None
+    channel: int = Field(ge=1, le=64)
+    stream_type: str = Field(pattern="^(main|sub)$")
+
+
+class ConnectionTestResult(BaseModel):
+    success: bool
+    error: Optional[str] = None
+    codec: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    fps: Optional[float] = None
+    resolution: Optional[str] = None
+
+
+# ------------------------------------------------------- проверка подключения
+
+def test_rtsp_connection(
+    *,
+    nvr_host: str,
+    rtsp_port: int,
+    username: str,
+    password: str,
+    channel: int,
+    stream_type: str,
+    ffprobe_path: Optional[str],
+    timeout: int = 10,
+) -> ConnectionTestResult:
+    """Реально открывает RTSP-поток через ffprobe.
+
+    Ошибки наружу отдаются generic-текстом: без пароля, без URL, без
+    деталей stderr (они могут содержать URL с учётными данными).
+    """
+    if not ffprobe_path:
+        return ConnectionTestResult(
+            success=False, error="FFmpeg/ffprobe не найден на сервере"
+        )
+
+    url = build_rtsp_url(nvr_host, rtsp_port, username, password, channel, stream_type)
+    cmd = [
+        ffprobe_path, "-v", "error",
+        "-rtsp_transport", "tcp",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=codec_name,width,height,avg_frame_rate",
+        "-of", "json",
+        url,
+    ]
+    logger.info(
+        "Проверка подключения: %s:%s канал %d (%s)",
+        nvr_host, rtsp_port, channel, stream_type,
+    )
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=timeout + 5)
+    except subprocess.TimeoutExpired:
+        return ConnectionTestResult(
+            success=False, error="Unable to connect to RTSP stream (timeout)"
+        )
+
+    if result.returncode != 0:
+        stderr = result.stderr.decode("utf-8", "replace").strip()
+        # подробности — только в лог, с маскировкой пароля
+        logger.warning(
+            "Проверка подключения не удалась (%s:%s ch%d): %s",
+            nvr_host, rtsp_port, channel,
+            mask_url(stderr.splitlines()[-1] if stderr else "unknown error"),
+        )
+        return ConnectionTestResult(
+            success=False, error="Unable to connect to RTSP stream."
+        )
+
+    try:
+        stream = json.loads(result.stdout.decode("utf-8", "replace"))["streams"][0]
+        width, height = int(stream["width"]), int(stream["height"])
+    except (ValueError, KeyError, IndexError, TypeError):
+        return ConnectionTestResult(
+            success=False, error="Unable to connect to RTSP stream."
+        )
+
+    return ConnectionTestResult(
+        success=True,
+        codec=str(stream.get("codec_name") or "unknown"),
+        width=width,
+        height=height,
+        fps=parse_frame_rate(stream.get("avg_frame_rate")),
+        resolution=f"{width}x{height}",
+    )
+
+
+# -------------------------------------------------------------------- CRUD
+
+def get_camera(db: Session, camera_id: int) -> Optional[Camera]:
+    return db.get(Camera, camera_id)
+
+
+def list_cameras(db: Session) -> list[Camera]:
+    return db.query(Camera).order_by(Camera.channel, Camera.id).all()
+
+
+def create_camera(db: Session, data: CameraCreate) -> Camera:
+    camera = Camera(**data.model_dump())
+    db.add(camera)
+    db.commit()
+    db.refresh(camera)
+    logger.info("Создана камера #%d «%s» (%s ch%d)", camera.id, camera.name,
+                camera.nvr_host, camera.channel)
+    return camera
+
+
+def update_camera(db: Session, camera: Camera, data: CameraUpdate) -> tuple[Camera, set[str]]:
+    """Обновляет поля камеры. Возвращает (камера, множество изменённых полей)."""
+    changed: set[str] = set()
+    for field, value in data.model_dump(exclude_unset=True).items():
+        if field == "password" and not value:
+            continue  # пустой пароль = не менять
+        if getattr(camera, field) != value:
+            setattr(camera, field, value)
+            changed.add(field)
+    db.commit()
+    db.refresh(camera)
+    return camera, changed
+
+
+def delete_camera(db: Session, camera: Camera) -> None:
+    db.delete(camera)
+    db.commit()
+    logger.info("Удалена камера #%d «%s»", camera.id, camera.name)

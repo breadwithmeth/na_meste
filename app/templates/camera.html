@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Камера — Camera Monitor</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="dot"></span> Camera Monitor</a>
+    <span id="camera-title" class="muted">Камера</span>
+  </header>
+
+  <main class="container view">
+    <div class="video-panel">
+      <img id="stream" src="/api/cameras/{{ camera_id }}/stream" alt="Живой поток камеры">
+      <div id="video-overlay" class="video-overlay" hidden>Поток недоступен</div>
+    </div>
+
+    <aside class="panel">
+      <div class="panel-head"><h2>Состояние</h2></div>
+      <div id="status-badge" class="status">…</div>
+      <dl class="stats">
+        <div><dt>Статус</dt><dd id="st-status">—</dd></div>
+        <div><dt>FPS (фактический)</dt><dd id="st-fps">—</dd></div>
+        <div><dt>Разрешение</dt><dd id="st-res">—</dd></div>
+        <div><dt>Кодек</dt><dd id="st-codec">—</dd></div>
+        <div><dt>Реконнекты</dt><dd id="st-reconnects">—</dd></div>
+        <div><dt>Последний кадр</dt><dd id="st-lastframe">—</dd></div>
+        <div><dt>Ошибка</dt><dd id="st-error">—</dd></div>
+      </dl>
+      <p class="muted small">RTSP → FFmpeg → MJPEG. Статус обновляется каждые 2 сек.</p>
+    </aside>
+  </main>
+
+  <script>window.CAMERA_ID = {{ camera_id }};</script>
+  <script src="/static/js/camera.js"></script>
+</body>
+</html>
