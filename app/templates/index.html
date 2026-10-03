@@ -3,29 +3,37 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Camera Monitor</title>
+  <title>PALEVO — Мониторинг</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="dot"></span> Camera Monitor</div>
-    <button id="btn-add" class="btn primary">+ Добавить камеру</button>
+    <a class="brand" href="/"><span class="dot"></span> PALEVO</a>
+    <nav class="nav">
+      <a href="/" class="nav-link active">Камеры</a>
+      <a href="/employees" class="nav-link">Сотрудники</a>
+      <a href="/presence" class="nav-link">Присутствие</a>
+      <a href="/unknown" class="nav-link">Посторонние</a>
+    </nav>
+    <div class="topbar-right">
+      <button id="btn-add" class="btn primary">+ Добавить камеру</button>
+    </div>
   </header>
 
-  <main class="container">
+  <main class="container wide">
     <section class="panel">
       <div class="panel-head">
         <h2>Камеры</h2>
         <span id="summary" class="muted"></span>
       </div>
-      <ul id="camera-list" class="camera-list"></ul>
+      <div id="camera-grid" class="camera-grid"></div>
       <div id="empty" class="empty" hidden>
         Камер пока нет. Нажмите «Добавить камеру», чтобы создать первую.
       </div>
     </section>
   </main>
 
-  <!-- Модальное окно добавления / редактирования -->
+  <!-- Модальное окно добавления / редактирования камеры -->
   <div id="modal" class="modal-backdrop" hidden>
     <div class="modal">
       <h2 id="modal-title">Добавить камеру</h2>

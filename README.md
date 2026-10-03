@@ -1,10 +1,15 @@
-# Camera Monitor — MVP
+# PALEVO — мониторинг камер и присутствия сотрудников
 
-Локальное web-приложение для подключения к IP-видеорегистраторам **Dahua** по RTSP:
-просмотр живого видео с камер и управление их конфигурацией.
+Локальное web-приложение:
 
-Это первый этап системы мониторинга сотрудников. Распознавание лиц/сотрудников
-и аналитика присутствия — следующие этапы; RTSP-модуль от них не зависит.
+- **Камеры**: подключение к IP-видеорегистраторам **Dahua** по RTSP, живое превью (MJPEG)
+- **AI**: обнаружение людей (YOLO), трекинг (ByteTrack), распознавание лиц
+  сотрудников (InsightFace/ArcFace), сессии присутствия
+- **Посторонние**: фиксация неопознанных людей (снимок + камера + время)
+- **Telegram**: уведомления в группу — посторонний (с фото), сотрудник
+  пришёл / ушёл
+
+RTSP-модуль не зависит от AI; AI получает кадры из его буфера.
 
 ## Архитектура
 
@@ -17,19 +22,31 @@ FFmpeg (subprocess, rawvideo bgr24)
     ▼
 RTSP Reader (фоновый поток, авто-реконнект)
     │
-    ├── Frame Buffer (2 последних кадра, drop old / keep latest)
+    ├── MJPEG preview → браузер (полный FPS)
     │
-    └── MJPEG preview → браузер
+    └── FrameBuffer (queue=2, drop old / keep latest)
+            │
+            ▼
+       AI Worker (1 поток, AI_FPS на камеру)
+            │
+            ├── YOLO Person Detection (yolov8n.onnx)
+            ├── ByteTrack (треки + grace period)
+            ├── Face Detection + Embedding (InsightFace buffalo_l)
+            ├── Employee Recognition (косинус, MIN_CONFIRMATIONS)
+            │
+            └── Presence Sessions → SQLite
+                    │
+                    ├── Unknown Events (снимок → SQLite → Telegram)
+                    ▼
+              Web UI (PALEVO) + Telegram-группа
 ```
-
-В будущем к Frame Buffer подключится детектор присутствия (Person Detection →
-Tracking → Face Recognition → Employee), не меняя RTSP-модуль.
 
 ## Стек
 
-- Python 3.11+, FastAPI, SQLAlchemy, SQLite
+- Python 3.11+, FastAPI, SQLAlchemy, SQLite (WAL)
 - FFmpeg / ffprobe (RTSP over TCP, декодирование)
-- OpenCV (JPEG-кодирование кадров для MJPEG)
+- OpenCV, numpy
+- ONNX Runtime GPU/CPU, InsightFace 2.0 (buffalo_l)
 - HTML/CSS/vanilla JS — без frontend-фреймворков
 
 ## Установка
@@ -42,53 +59,142 @@ Tracking → Face Recognition → Employee), не меняя RTSP-модуль.
 winget install --id=Gyan.FFmpeg -e
 ```
 
-После установки перезапустите терминал (PATH обновляется только в новых
-окнах). Альтернатива: скачать сборку с <https://www.gyan.dev/ffmpeg/builds/>
-и положить `ffmpeg.exe`/`ffprobe.exe` в папку `bin/` проекта — приложение
-найдёт их автоматически. Можно также указать путь явно в `.env`:
+После установки перезапустите терминал. Альтернатива: сборка с
+<https://www.gyan.dev/ffmpeg/builds/> в папку `bin/` проекта.
 
-```env
-FFMPEG_PATH=C:/ffmpeg/bin/ffmpeg.exe
-```
-
-**macOS**
-
-```bash
-brew install ffmpeg
-```
-
-**Ubuntu / Debian**
-
-```bash
-sudo apt update && sudo apt install -y ffmpeg
-```
-
-Проверка:
-
-```bash
-ffmpeg -version
-ffprobe -version
-```
+**macOS**: `brew install ffmpeg`  **Ubuntu**: `sudo apt install -y ffmpeg`
 
 ### 2. Python-зависимости
 
 ```bash
 python -m venv venv
-source venv/bin/activate        # macOS / Linux
+venv\Scripts\activate            # Windows
+source venv/bin/activate         # macOS / Linux
 pip install -r requirements.txt
 ```
 
-Windows:
+**Важно (GPU)**: пакет `insightface` тянет CPU-сборку onnxruntime и затирает
+GPU-версию. После установки выполните один раз:
 
 ```bash
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
+pip uninstall -y onnxruntime
+pip install --no-deps --force-reinstall onnxruntime-gpu
 ```
 
-### 3. Конфигурация
+Для работы только на CPU используйте обычный `onnxruntime` вместо `-gpu`
+(приложение автоматически переключится, не падая).
 
-Настройки читаются из `.env` (шаблон — `.env.example`):
+### 3. CUDA (Windows, опционально)
+
+onnxruntime-gpu требует CUDA 12/13 + cuDNN 9 DLL. Приложение ищет их
+автоматически в порядке:
+
+1. `CUDA_DLL_PATH` из .env;
+2. `bin/cuda/` проекта;
+3. pip-колёса `nvidia-*` в venv;
+4. torch из соседнего окружения (например, ComfyUI);
+5. установленный CUDA Toolkit.
+
+Если DLL не найдены — inference идёт на CPU, приложение работает.
+При старте в логе: `AI Provider: CUDAExecutionProvider` или `CPUExecutionProvider`.
+
+### 4. Модели (папка `models/`)
+
+| Модель | Файл | Назначение | Откуда |
+|---|---|---|---|
+| YOLOv8n | `models/yolov8n.onnx` (~12 МБ) | детекция людей | [ultralytics assets](https://github.com/ultralytics/assets/releases) |
+| InsightFace buffalo_l | `models/buffalo_l/*.onnx` (~300 МБ) | детекция лиц (SCRFD det_10g) + эмбеддинги (ArcFace w600k_r50) | скачивается автоматически при первом запуске в `models/buffalo_l/` |
+
+YOLO можно скачать вручную:
+
+```bash
+curl -L -o models/yolov8n.onnx \
+  https://github.com/ultralytics/assets/releases/download/v8.4.0/yolov8n.onnx
+```
+
+Модели скачиваются один раз и хранятся локально. Переключение CPU/CUDA —
+через `AI_DEVICE=auto|cpu|cuda` в .env.
+
+## Запуск
+
+```bash
+python main.py
+```
+
+Открыть: **<http://localhost:8000>** (API docs — /docs). При старте подключаются
+все включённые камеры из базы и запускается AI-воркер.
+
+## Что видно в интерфейсе
+
+- **Камеры** (дашборд): карточки со статусом и счётчиками — людей / сотрудников /
+  неизвестных
+- **Камера**: живое видео + bounding boxes поверх (зелёный — сотрудник с именем
+  и уверенностью, красный — Unknown, жёлтый пунктир — распознаётся)
+- **Сотрудники**: список, добавление, страница сотрудника с загрузкой фото
+  (шаги: поиск лица → эмбеддинг → сохранение; ошибки: нет лица / несколько
+  лиц / лицо слишком маленькое; предупреждение о размытости)
+- **Присутствие**: кто сейчас на камерах + история сессий
+- **Посторонние**: галерея зафиксированных неопознанных людей (снимок,
+  камера, время) + каждое событие уходит в Telegram
+
+## Фиксация посторонних и Telegram
+
+Посторонним считается человек, который после двух попыток распознавания
+не совпал ни с одним сотрудником (или трекается >15 c без распознавания —
+лицо не видно). Для каждого трека — одна фиксация, не чаще
+`UNKNOWN_EVENT_COOLDOWN=60` c на камеру (защита от спама при трек-чёрне).
+
+Что делает система при фиксации:
+
+1. вырезает снимок человека из кадра → `unknown_events` (SQLite);
+2. отправляет фото с подписью в Telegram-группу;
+3. событие видно на странице «Посторонние» (хранится `UNKNOWN_KEEP_DAYS=30` дней).
+
+Уведомления о сотрудниках: «Присутствие началось» и «Сессия закрыта»
+(время начала/конца и длительность). Настраивается `TELEGRAM_NOTIFY_*`.
+
+### Настройка Telegram
+
+1. Создайте бота через [@BotFather](https://t.me/BotFather), получите токен.
+2. Добавьте бота в группу.
+3. **Отправьте в группе сообщение `/start`** (или `@имя_бота привет`) —
+   бот видит команды даже в privacy-режиме и по ним определит chat_id.
+4. Заполните `.env`:
+
+```env
+TELEGRAM_BOT_TOKEN=1234567890:AA...
+TELEGRAM_CHAT_ID=          # можно оставить пустым — определится по /start
+TELEGRAM_NOTIFY_UNKNOWN=true
+TELEGRAM_NOTIFY_PRESENCE=true
+```
+
+Если `TELEGRAM_CHAT_ID` пуст, приложение само опрашивает getUpdates, пока
+не появится `/start`, и сохраняет chat_id в `data/telegram_chat_id.txt`.
+Отправка идёт через очередь в фоновом потоке — проблемы с сетью не влияют
+на AI и превью. Токен никогда не логируется.
+
+## Как работает распознавание
+
+1. YOLO находит людей; ByteTrack назначает `track_id` (grace period
+   `TRACK_LOST_TIMEOUT=3` c — пропавшего ненадолго человека трек не теряет);
+2. Для неопознанного трека раз в `FACE_RECOGNITION_RETRY_INTERVAL` c
+   вырезается область головы, детектируется лицо, считается эмбеддинг;
+3. Косинусное сходство со всеми эмбеддингами сотрудников; при
+   `MIN_CONFIRMATIONS=2` подряд совпадений ≥ `MIN_RECOGNITION_CONFIDENCE=0.45`
+   трек привязывается к сотруднику (защита от false positives);
+4. Пока трек жив — повторное распознавание НЕ выполняется;
+5. Подтверждённый сотрудник → presence-сессия (одна на сотрудника на камеру):
+   `started_at` при первом подтверждении, `last_seen_at` продлевается,
+   `ended_at = last_seen_at` после `PRESENCE_END_TIMEOUT=30` c без наблюдений.
+
+Порог 0.45 подобран под buffalo_l; между разными фото одного человека сходство
+обычно 0.35–0.55 — поэтому сотруднику стоит загружать 3–5 фото с разными
+углами/освещением. Для более строгого/мягкого распознавания меняйте
+`MIN_RECOGNITION_CONFIDENCE`.
+
+## Конфигурация (.env)
+
+Основное (шаблон — `.env.example`):
 
 ```env
 APP_HOST=0.0.0.0
@@ -97,48 +203,36 @@ DATABASE_URL=sqlite:///./data/app.db
 RTSP_CONNECT_TIMEOUT=10
 RTSP_RECONNECT_MAX_DELAY=30
 DEFAULT_RTSP_PORT=554
+PREVIEW_FPS=10
+
+# AI
+AI_ENABLED=true
+AI_FPS=5                      # кадров/сек на камеру для AI
+AI_CAMERAS=                   # "1,3,5" — пусто = все камеры
+AI_DEVICE=auto                # auto | cpu | cuda
+PERSON_CONFIDENCE=0.35
+TRACK_LOST_TIMEOUT=3
+MIN_RECOGNITION_CONFIDENCE=0.45
+MIN_CONFIRMATIONS=2
+FACE_RECOGNITION_RETRY_INTERVAL=2
+PRESENCE_END_TIMEOUT=30
+FACE_MIN_SIZE=80
+CUDA_DLL_PATH=                # путь к CUDA/cuDNN DLL (пусто = авто-поиск)
+
+# Telegram
+TELEGRAM_BOT_TOKEN=            # токен от @BotFather
+TELEGRAM_CHAT_ID=              # пусто = авто-определение по /start в группе
+TELEGRAM_NOTIFY_UNKNOWN=true   # посторонний (с фото)
+TELEGRAM_NOTIFY_PRESENCE=true  # сотрудник пришёл / ушёл
+
+# Посторонние
+UNKNOWN_EVENT_COOLDOWN=60      # сек между фиксациями на одной камере
+UNKNOWN_KEEP_DAYS=30           # сколько дней хранить события
 ```
 
-Пароли камер хранятся в SQLite (`data/app.db`), а не в `.env` — камер может
-быть много. Файл `.env` можно не создавать: подойдут значения по умолчанию.
-
-## Запуск
-
-```bash
-python main.py
-```
-
-Открыть: **<http://localhost:8000>** (интерактивная документация API —
-<http://localhost:8000/docs>).
-
-При запуске приложение читает из базы все включённые камеры и автоматически
-подключает их.
-
-## Добавление камеры
-
-RTSP URL формируется автоматически из параметров — вводить его вручную не нужно:
-
-```text
-NVR IP: 192.168.1.100   RTSP порт: 554   Логин: admin   Пароль: ********
-Канал: 4                Поток: main
-```
-
-собирается в:
-
-```text
-rtsp://admin:password@192.168.1.100:554/cam/realmonitor?channel=4&subtype=0
-```
-
-- `channel` — канал камеры на NVR (нумерация с 1);
-- `stream_type=main` → `subtype=0` (основной поток), `sub` → `subtype=1`
-  (дополнительный, легче для превью).
-
-Кнопка **«Проверить подключение»** реально открывает RTSP-поток и показывает
-разрешение, кодек и FPS — либо сообщение об ошибке (без пароля и URL).
+Пароли камер хранятся в SQLite, не в .env; через API не отдаются.
 
 ## Проверка подключения к Dahua вручную
-
-Если нужно убедиться, что NVR отдаёт RTSP, вне приложения:
 
 ```bash
 ffprobe -v error -rtsp_transport tcp -select_streams v:0 \
@@ -146,99 +240,79 @@ ffprobe -v error -rtsp_transport tcp -select_streams v:0 \
   -of json "rtsp://admin:ПАРОЛЬ@192.168.1.100:554/cam/realmonitor?channel=1&subtype=0"
 ```
 
-Успех — JSON с `codec_name`/`width`/`height`/`avg_frame_rate`.
-Типичные причины ошибок: неверный пароль, RTSP отключён в настройках NVR
-(веб-интерфейс → Настройки → Сеть → RTSP), канал без камеры.
-
-## curl-примеры для API
+## curl-примеры
 
 ```bash
-# Список камер (+ live-статусы)
+# Камеры
 curl http://localhost:8000/api/cameras
-
-# Карточка камеры
-curl http://localhost:8000/api/cameras/1
-
-# Добавить камеру
-curl -X POST http://localhost:8000/api/cameras \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Касса 1","nvr_host":"192.168.1.100","rtsp_port":554,
-       "username":"admin","password":"ПАРОЛЬ","channel":1,
-       "stream_type":"main","enabled":true}'
-
-# Изменить камеру (пустой/отсутствующий пароль = не менять)
-curl -X PUT http://localhost:8000/api/cameras/1 \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Касса 1 (новое имя)","enabled":true}'
-
-# Удалить камеру
-curl -X DELETE http://localhost:8000/api/cameras/1
-
-# Проверить подключение сохранённой камеры (реально открывает RTSP)
 curl -X POST http://localhost:8000/api/cameras/1/test
-
-# Проверить параметры без сохранения (форма добавления)
-curl -X POST http://localhost:8000/api/cameras/test \
-  -H "Content-Type: application/json" \
-  -d '{"nvr_host":"192.168.1.100","rtsp_port":554,"username":"admin",
-       "password":"ПАРОЛЬ","channel":1,"stream_type":"main"}'
-
-# Runtime-статус: ONLINE/CONNECTING/..., FPS, разрешение, кодек, реконнекты
 curl http://localhost:8000/api/cameras/1/status
-
-# MJPEG-поток (первые ~3 секунды в файл)
+curl http://localhost:8000/api/cameras/1/detections     # текущие люди (треки)
 curl -m 3 http://localhost:8000/api/cameras/1/stream -o stream.bin
+
+# Сотрудники
+curl http://localhost:8000/api/employees
+curl -X POST http://localhost:8000/api/employees -H "Content-Type: application/json" \
+  -d '{"name":"Иван Петров","external_id":"10023"}'
+curl -X POST http://localhost:8000/api/employees/1/faces -F "files=@photo1.jpg" -F "files=@photo2.jpg"
+curl http://localhost:8000/api/employees/1?faces=1
+
+# Присутствие
+curl http://localhost:8000/api/presence/active
+curl "http://localhost:8000/api/presence?limit=100"
+curl http://localhost:8000/api/presence/employee/1
+
+# Посторонние
+curl http://localhost:8000/api/unknown?limit=50
+curl http://localhost:8000/api/unknown/1/photo -o person.jpg
+curl -X DELETE http://localhost:8000/api/unknown/1
 ```
-
-MJPEG можно открыть и напрямую в браузере: `http://localhost:8000/api/cameras/1/stream`.
-
-## Статусы камер
-
-| Статус        | Значение                                             |
-|---------------|------------------------------------------------------|
-| `ONLINE`      | кадры идут                                           |
-| `CONNECTING`  | первичное подключение                                |
-| `RECONNECTING`| соединение потеряно, переподключение (backoff 1→30 с)|
-| `OFFLINE`     | камера выключена или ридер остановлен                |
-| `ERROR`       | неисправимая ошибка (например, не найден FFmpeg)     |
-
-При разрыве соединения ридер переподключается автоматически с exponential
-backoff (1, 2, 4, 8, 16, 30, 30, ... сек) — без перезапуска приложения.
 
 ## Безопасность
 
-- Пароль **никогда** не возвращается API (только `has_password: true`),
-  не выводится в UI, не вставляется в HTML/JS и не пишется в логи
-  (RTSP URL в логах маскируется: `rtsp://admin:***@...`).
-- Пароль передаётся в ffmpeg как аргумент командной строки, поэтому он виден
-  в списке процессов локальной машины — это особенность подхода subprocess.
-- В MVP нет авторизации: приложение предназначено для запуска на локальной
-  машине или в доверенной локальной сети. Не публикуйте порт в интернет.
+- Пароль камеры никогда не возвращается API, не пишется в логи (URL маскируется
+  `rtsp://admin:***@...`), не попадает в HTML/JS.
+- Хранятся только эмбеддинги лиц и миниатюры 112×112 для управления в UI;
+  исходные фотографии сотрудников не сохраняются.
+- В логах нет изображений и эмбеддингов.
+- Авторизации нет: приложение — для локальной машины или доверенной сети.
 
 ## Структура проекта
 
 ```text
-├── main.py                     # входная точка: python main.py
+├── main.py                     # вход: python main.py
 ├── requirements.txt
-├── .env.example                # шаблон конфигурации
-├── data/app.db                 # SQLite (создаётся автоматически)
+├── .env.example
+├── data/app.db                 # SQLite: cameras, employees, employee_faces,
+│                               # presence_sessions, unknown_events
+├── models/                     # yolov8n.onnx, buffalo_l/
 ├── app/
 │   ├── config.py               # настройки (.env)
-│   ├── api/cameras.py          # REST API + MJPEG-стрим
-│   ├── database/
-│   │   ├── database.py         # engine/сессии
-│   │   └── models.py           # модель Camera
-│   ├── rtsp/
-│   │   ├── dahua.py            # сборка RTSP URL + маскировка
-│   │   ├── reader.py           # RTSPReader + FrameBuffer + реконнект
-│   │   └── manager.py          # менеджер ридеров
-│   ├── services/camera_service.py  # CRUD + проверка подключения
-│   └── templates/              # index.html, camera.html
+│   ├── api/                    # cameras.py, employees.py, presence.py, unknown.py
+│   ├── database/               # database.py, models.py
+│   ├── rtsp/                   # dahua.py, reader.py, manager.py (без изменений AI)
+│   ├── ai/                     # detector.py, tracker.py, face_detector.py,
+│   │                           # face_recognition.py, recognition_service.py,
+│   │                           # worker.py, providers.py
+│   ├── services/               # camera_service, employee_service, presence_service,
+│   │                           # unknown_service, telegram_service
+│   └── templates/              # index, camera, employees, employee_detail,
+│                               # presence, unknown
 └── static/                     # css + vanilla js
 ```
 
-## Дорожная карта (следующие этапы)
+## Производительность
 
-Person Detection → Tracking → Face Recognition → сотрудники, зоны,
-аналитика присутствия. RTSP-модуль и FrameBuffer уже готовы к этому:
-кадры — numpy BGR, буфер отдаёт только актуальные кадры.
+- AI работает на GPU (CUDA) при наличии; один AI-воркер обслуживает все камеры
+  (архитектура допускает добавление воркеров).
+- Кадры берутся из буфера ридера (макс. 2, старые отбрасываются) — AI никогда
+  не копит очередь и не тормозит превью.
+- 12 камер × AI_FPS=5 требует ~60 инференсов/с — GPU справляется; на CPU
+  уменьшите AI_FPS или ограничьте AI_CAMERAS.
+- Превью и AI независимы: MJPEG отдаёт полный поток, AI берёт свои 5 кадров/с.
+
+## Дорожная карта (не реализовано)
+
+Контроль рабочего времени, опоздания, зарплаты, смены, зоны, автоматический
+вход/выход, cross-camera tracking / ReID между камерами, Telegram,
+мобильное приложение, облачная синхронизация.

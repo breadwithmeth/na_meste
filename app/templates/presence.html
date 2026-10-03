@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Присутствие — PALEVO</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="dot"></span> PALEVO</a>
+    <nav class="nav">
+      <a href="/" class="nav-link">Камеры</a>
+      <a href="/employees" class="nav-link">Сотрудники</a>
+      <a href="/presence" class="nav-link active">Присутствие</a>
+      <a href="/unknown" class="nav-link">Посторонние</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Сейчас на камерах</h2>
+        <span id="active-summary" class="muted"></span>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="active-table">
+          <thead>
+            <tr><th>Сотрудник</th><th>Камера</th><th>С</th><th>Последнее наблюдение</th><th>Уверенность</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="active-empty" class="empty">Сейчас никого не обнаружено.</div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>История</h2></div>
+      <div class="table-wrap">
+        <table class="table" id="history-table">
+          <thead>
+            <tr><th>Сотрудник</th><th>Камера</th><th>Начало</th><th>Последнее наблюдение</th><th>Окончание</th><th>Уверенность</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="history-empty" class="empty">Истории пока нет.</div>
+    </section>
+  </main>
+
+  <script src="/static/js/presence.js"></script>
+</body>
+</html>

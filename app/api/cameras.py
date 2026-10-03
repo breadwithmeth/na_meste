@@ -40,6 +40,11 @@ def get_manager(request: Request) -> ReaderManager:
     return request.app.state.manager
 
 
+def _detection_state(request: Request):
+    """DetectionState AI-воркера (может отсутствовать, если AI выключен)."""
+    return getattr(request.app.state, "detection_state", None)
+
+
 def _camera_or_404(db: Session, camera_id: int):
     camera = service.get_camera(db, camera_id)
     if camera is None:
@@ -47,10 +52,18 @@ def _camera_or_404(db: Session, camera_id: int):
     return camera
 
 
-def _camera_response(camera, manager: ReaderManager) -> dict:
-    """Камера без пароля + live-статус потока."""
+def _camera_response(camera, manager: ReaderManager, request: Request) -> dict:
+    """Камера без пароля + live-статус + счётчики людей (AI)."""
     data = service.CameraOut.model_validate(camera).model_dump(mode="json")
     data.update(manager.status(camera.id))
+    state = _detection_state(request)
+    if state is not None:
+        people, known, unknown = state.counts(camera.id)
+        data["people_count"] = people
+        data["known_count"] = known
+        data["unknown_count"] = unknown
+    else:
+        data["people_count"] = data["known_count"] = data["unknown_count"] = 0
     return data
 
 
@@ -90,45 +103,49 @@ def api_test_unsaved(
 
 @router.get("")
 def api_list_cameras(
+    request: Request,
     db: Session = Depends(get_db),
     manager: ReaderManager = Depends(get_manager),
 ):
-    return [_camera_response(c, manager) for c in service.list_cameras(db)]
+    return [_camera_response(c, manager, request) for c in service.list_cameras(db)]
 
 
 @router.post("", status_code=201)
 def api_create_camera(
     payload: service.CameraCreate,
+    request: Request,
     db: Session = Depends(get_db),
     manager: ReaderManager = Depends(get_manager),
 ):
     camera = service.create_camera(db, payload)
     if camera.enabled:
         manager.start(camera)
-    return _camera_response(camera, manager)
+    return _camera_response(camera, manager, request)
 
 
 @router.get("/{camera_id}")
 def api_get_camera(
     camera_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     manager: ReaderManager = Depends(get_manager),
 ):
     camera = _camera_or_404(db, camera_id)
-    return _camera_response(camera, manager)
+    return _camera_response(camera, manager, request)
 
 
 @router.put("/{camera_id}")
 def api_update_camera(
     camera_id: int,
     payload: service.CameraUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     manager: ReaderManager = Depends(get_manager),
 ):
     camera = _camera_or_404(db, camera_id)
     camera, changed = service.update_camera(db, camera, payload)
     manager.sync(camera, changed)
-    return _camera_response(camera, manager)
+    return _camera_response(camera, manager, request)
 
 
 @router.delete("/{camera_id}", status_code=204)
@@ -173,6 +190,28 @@ def api_camera_status(
     camera = _camera_or_404(db, camera_id)
     data = manager.status(camera.id)
     data["enabled"] = camera.enabled
+    return data
+
+
+@router.get("/{camera_id}/detections")
+def api_camera_detections(
+    camera_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Текущие люди на камере (для overlay bounding boxes на странице камеры)."""
+    _camera_or_404(db, camera_id)
+    state = _detection_state(request)
+    data = state.camera(camera_id) if state else None
+    if data is None:
+        return {
+            "camera_id": camera_id,
+            "updated_at": None,
+            "tracks": [],
+            "people_count": 0,
+            "known_count": 0,
+            "unknown_count": 0,
+        }
     return data
 
 

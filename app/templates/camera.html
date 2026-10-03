@@ -3,18 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Камера — Camera Monitor</title>
+  <title>Камера — PALEVO</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/"><span class="dot"></span> Camera Monitor</a>
+    <a class="brand" href="/"><span class="dot"></span> PALEVO</a>
+    <nav class="nav">
+      <a href="/" class="nav-link active">Камеры</a>
+      <a href="/employees" class="nav-link">Сотрудники</a>
+      <a href="/presence" class="nav-link">Присутствие</a>
+      <a href="/unknown" class="nav-link">Посторонние</a>
+    </nav>
     <span id="camera-title" class="muted">Камера</span>
   </header>
 
   <main class="container view">
     <div class="video-panel">
       <img id="stream" src="/api/cameras/{{ camera_id }}/stream" alt="Живой поток камеры">
+      <div id="boxes" class="boxes-overlay"></div>
       <div id="video-overlay" class="video-overlay" hidden>Поток недоступен</div>
     </div>
 
@@ -23,6 +30,9 @@
       <div id="status-badge" class="status">…</div>
       <dl class="stats">
         <div><dt>Статус</dt><dd id="st-status">—</dd></div>
+        <div><dt>Людей в кадре</dt><dd id="st-people">—</dd></div>
+        <div><dt>Сотрудники</dt><dd id="st-known">—</dd></div>
+        <div><dt>Неизвестные</dt><dd id="st-unknown">—</dd></div>
         <div><dt>FPS (фактический)</dt><dd id="st-fps">—</dd></div>
         <div><dt>Разрешение</dt><dd id="st-res">—</dd></div>
         <div><dt>Кодек</dt><dd id="st-codec">—</dd></div>
@@ -30,7 +40,7 @@
         <div><dt>Последний кадр</dt><dd id="st-lastframe">—</dd></div>
         <div><dt>Ошибка</dt><dd id="st-error">—</dd></div>
       </dl>
-      <p class="muted small">RTSP → FFmpeg → MJPEG. Статус обновляется каждые 2 сек.</p>
+      <p class="muted small">RTSP → FFmpeg → MJPEG + AI (YOLO → трекинг → лица). Статус обновляется каждые 2 сек.</p>
     </aside>
   </main>
 

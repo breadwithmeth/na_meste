@@ -1,6 +1,6 @@
-// Camera Monitor — главная страница: список камер, добавление/редактирование.
+// PALEVO — дашборд: карточки камер + статусы + счётчики людей, добавление камер.
 
-const listEl = document.getElementById('camera-list');
+const gridEl = document.getElementById('camera-grid');
 const emptyEl = document.getElementById('empty');
 const summaryEl = document.getElementById('summary');
 const modal = document.getElementById('modal');
@@ -9,7 +9,7 @@ const testResult = document.getElementById('test-result');
 const modalTitle = document.getElementById('modal-title');
 const btnTest = document.getElementById('btn-test');
 
-let editingId = null; // null — добавление, число — редактирование
+let editingId = null;
 
 async function api(url, options = {}) {
   const res = await fetch(url, {
@@ -24,8 +24,6 @@ async function api(url, options = {}) {
   return res.status === 204 ? null : res.json();
 }
 
-// ---------- список ----------
-
 async function loadCameras() {
   let cameras;
   try {
@@ -35,82 +33,81 @@ async function loadCameras() {
     return;
   }
 
-  listEl.innerHTML = '';
+  gridEl.innerHTML = '';
   emptyEl.hidden = cameras.length > 0;
   const online = cameras.filter((c) => c.status === 'ONLINE').length;
-  summaryEl.textContent = cameras.length ? `${online} из ${cameras.length} онлайн` : '';
+  const people = cameras.reduce((s, c) => s + (c.people_count || 0), 0);
+  summaryEl.textContent = cameras.length
+    ? `${cameras.length} камер · ${online} онлайн · людей в кадре: ${people}`
+    : '';
 
   for (const cam of cameras) {
-    listEl.appendChild(renderCamera(cam));
+    gridEl.appendChild(renderCard(cam));
   }
 }
 
-function renderCamera(cam) {
+function renderCard(cam) {
   const status = cam.status || 'OFFLINE';
 
-  const li = document.createElement('li');
-  li.className = 'camera-row';
+  const card = document.createElement('a');
+  card.className = 'cam-card';
+  card.href = `/cameras/${cam.id}`;
 
+  const head = document.createElement('div');
+  head.className = 'cam-card-head';
+  const name = document.createElement('span');
+  name.className = 'cam-name';
+  name.textContent = cam.name;
   const dot = document.createElement('span');
   dot.className = 'dot ' + status.toLowerCase();
   dot.title = status;
-
-  const info = document.createElement('div');
-  info.className = 'camera-info';
-
-  const name = document.createElement('a');
-  name.href = `/cameras/${cam.id}`;
-  name.textContent = cam.name;
+  head.append(name, dot);
 
   const meta = document.createElement('div');
-  meta.className = 'meta muted';
-  const bits = [
-    `${cam.nvr_host}:${cam.rtsp_port}`,
-    `канал ${cam.channel}`,
-    cam.stream_type,
-  ];
-  if (cam.resolution) bits.push(cam.resolution);
-  if (cam.current_fps) bits.push(cam.current_fps.toFixed(0) + ' fps');
-  meta.textContent = bits.join(' · ');
+  meta.className = 'cam-meta muted';
+  meta.textContent = `${status} · ${cam.resolution || cam.nvr_host}`;
 
-  info.append(name, meta);
+  const people = document.createElement('div');
+  people.className = 'cam-people';
+  const total = cam.people_count || 0;
+  const known = cam.known_count || 0;
+  const unknown = cam.unknown_count || 0;
 
-  const badge = document.createElement('span');
-  badge.className = 'status ' + status.toLowerCase();
-  badge.textContent = status;
+  const badgeTotal = document.createElement('span');
+  badgeTotal.className = 'p-badge';
+  badgeTotal.textContent = `👥 ${total}`;
+  const badgeKnown = document.createElement('span');
+  badgeKnown.className = 'p-badge known';
+  badgeKnown.textContent = `✓ ${known}`;
+  badgeKnown.title = 'Распознанные сотрудники';
+  const badgeUnknown = document.createElement('span');
+  badgeUnknown.className = 'p-badge unknown';
+  badgeUnknown.textContent = `? ${unknown}`;
+  badgeUnknown.title = 'Неизвестные';
+  people.append(badgeTotal, badgeKnown, badgeUnknown);
 
   const actions = document.createElement('div');
-  actions.className = 'actions';
-
-  const open = document.createElement('a');
-  open.className = 'btn';
-  open.href = `/cameras/${cam.id}`;
-  open.textContent = 'Открыть';
-
+  actions.className = 'cam-card-actions';
   const edit = document.createElement('button');
   edit.className = 'btn ghost';
   edit.textContent = 'Изменить';
-  edit.onclick = () => openEdit(cam.id);
-
+  edit.onclick = (e) => { e.preventDefault(); e.stopPropagation(); openEdit(cam.id); };
   const del = document.createElement('button');
   del.className = 'btn ghost danger';
   del.textContent = 'Удалить';
-  del.onclick = async () => {
+  del.onclick = async (e) => {
+    e.preventDefault(); e.stopPropagation();
     if (!confirm(`Удалить камеру «${cam.name}»?`)) return;
-    try {
-      await api(`/api/cameras/${cam.id}`, { method: 'DELETE' });
-      loadCameras();
-    } catch (e) {
-      alert('Ошибка удаления: ' + e.message);
-    }
+    try { await api(`/api/cameras/${cam.id}`, { method: 'DELETE' }); loadCameras(); }
+    catch (err) { alert('Ошибка удаления: ' + err.message); }
   };
+  actions.append(edit, del);
 
-  actions.append(open, edit, del);
-  li.append(dot, info, badge, actions);
-  return li;
+  card.append(head, meta, people, actions);
+  return card;
 }
 
-// ---------- модальная форма ----------
+// ---------- модальная форма (как в MVP камер) ----------
 
 function openAdd() {
   editingId = null;
@@ -152,9 +149,7 @@ async function openEdit(id) {
   modal.hidden = false;
 }
 
-function closeModal() {
-  modal.hidden = true;
-}
+function closeModal() { modal.hidden = true; }
 
 function formPayload() {
   return {
@@ -168,21 +163,16 @@ function formPayload() {
   };
 }
 
-// ---------- проверка подключения ----------
-
 function showTestResult(kind, html) {
   testResult.className = 'test-result ' + kind;
   testResult.innerHTML = html;
   testResult.hidden = false;
 }
 
-function hideTestResult() {
-  testResult.hidden = true;
-}
+function hideTestResult() { testResult.hidden = true; }
 
 async function testConnection() {
   const payload = formPayload();
-
   if (form.password.value) {
     payload.password = form.password.value;
   } else if (editingId !== null) {
@@ -217,17 +207,12 @@ async function testConnection() {
   }
 }
 
-// ---------- сохранение ----------
-
 form.onsubmit = async (e) => {
   e.preventDefault();
   const payload = formPayload();
   try {
     if (editingId === null) {
-      if (!form.password.value) {
-        alert('Введите пароль NVR');
-        return;
-      }
+      if (!form.password.value) { alert('Введите пароль NVR'); return; }
       payload.password = form.password.value;
       await api('/api/cameras', { method: 'POST', body: JSON.stringify(payload) });
     } else {
@@ -244,14 +229,10 @@ form.onsubmit = async (e) => {
   }
 };
 
-// ---------- события ----------
-
 document.getElementById('btn-add').onclick = openAdd;
 document.getElementById('btn-cancel').onclick = closeModal;
 btnTest.onclick = testConnection;
-modal.addEventListener('click', (e) => {
-  if (e.target === modal) closeModal();
-});
+modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !modal.hidden) closeModal();
 });

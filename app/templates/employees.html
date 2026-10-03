@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Сотрудники — PALEVO</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="dot"></span> PALEVO</a>
+    <nav class="nav">
+      <a href="/" class="nav-link">Камеры</a>
+      <a href="/employees" class="nav-link active">Сотрудники</a>
+      <a href="/presence" class="nav-link">Присутствие</a>
+      <a href="/unknown" class="nav-link">Посторонние</a>
+    </nav>
+    <div class="topbar-right">
+      <button id="btn-add" class="btn primary">+ Добавить сотрудника</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Сотрудники</h2>
+        <span id="summary" class="muted"></span>
+      </div>
+      <ul id="employee-list" class="employee-list"></ul>
+      <div id="empty" class="empty" hidden>
+        Сотрудников пока нет. Добавьте первого и загрузите несколько фотографий его лица.
+      </div>
+    </section>
+  </main>
+
+  <!-- Модальное окно добавления сотрудника -->
+  <div id="modal" class="modal-backdrop" hidden>
+    <div class="modal">
+      <h2>Добавить сотрудника</h2>
+      <form id="employee-form" autocomplete="off">
+        <label class="field">Имя
+          <input name="name" required maxlength="150" placeholder="Иван Петров">
+        </label>
+        <label class="field">Внешний ID (необязательно)
+          <input name="external_id" maxlength="64" placeholder="10023">
+        </label>
+        <div class="modal-actions">
+          <span class="spacer"></span>
+          <button type="button" id="btn-cancel" class="btn">Отмена</button>
+          <button type="submit" class="btn primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/js/employees.js"></script>
+</body>
+</html>

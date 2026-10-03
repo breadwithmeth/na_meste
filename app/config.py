@@ -3,6 +3,7 @@ import os
 import shutil
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Корень проекта — папка, в которой лежит main.py
@@ -29,6 +30,47 @@ class Settings(BaseSettings):
     preview_fps: int = 10                   # ограничение FPS MJPEG-превью
     frame_buffer_size: int = 2              # буфер кадров (drop old, keep latest)
     frame_stall_timeout: int = 10           # сек без кадров → принудительный реконнект
+
+    # --- AI (детекция людей, трекинг, распознавание лиц) ---
+    ai_enabled: bool = True
+    ai_fps: float = 5.0                     # кадров/сек на камеру для AI (превью не ограничивается)
+    ai_cameras: str = ""                    # "1,3,5" — пусто = все камеры
+    ai_device: str = "auto"                 # auto | cpu | cuda
+    person_confidence: float = 0.35         # порог YOLO для человека
+    track_lost_timeout: float = 3.0         # сек grace period трека (re-identification)
+    min_recognition_confidence: float = Field(
+        default=0.45,
+        validation_alias=AliasChoices("MIN_RECOGNITION_CONFIDENCE", "FACE_RECOGNITION_THRESHOLD"),
+    )
+    min_confirmations: int = 2              # подряд совпавших распознаваний до подтверждения
+    face_recognition_retry_interval: float = 2.0  # сек между попытками распознать неизвестного
+    presence_end_timeout: float = 30.0      # сек без наблюдений → сессия закрывается
+    face_min_size: int = 80                 # мин. размер лица на фото, px
+    yolo_model: str = "models/yolov8n.onnx"
+    insightface_model: str = "buffalo_l"
+    insightface_root: str = "."             # модели лежат в ./models/<имя_пакета>
+    cuda_dll_path: str = ""                 # путь к CUDA/cuDNN DLL (пусто — авто-поиск)
+
+    # --- Telegram и фиксация посторонних ---
+    telegram_enabled: bool = True
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""              # пусто — авто-определение по /start в группе
+    telegram_notify_unknown: bool = True    # посторонний (с фото)
+    telegram_notify_presence: bool = True   # сотрудник пришёл / ушёл
+    unknown_event_cooldown: float = 60.0    # сек между фиксациями на одной камере
+    unknown_keep_days: int = 30             # сколько дней хранить события
+
+    def ai_camera_ids(self) -> set[int] | None:
+        """Идентификаторы камер для AI; None = все."""
+        raw = self.ai_cameras.strip()
+        if not raw:
+            return None
+        ids = set()
+        for part in raw.replace(";", ",").split(","):
+            part = part.strip()
+            if part.isdigit():
+                ids.add(int(part))
+        return ids or None
 
 
 settings = Settings()

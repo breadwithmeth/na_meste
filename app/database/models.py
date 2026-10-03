@@ -1,7 +1,11 @@
-"""Модель камеры. Полный RTSP URL в базе НЕ хранится — генерируется из параметров."""
+"""Модели данных.
+
+RTSP URL в базе НЕ хранится — генерируется из параметров.
+AI-таблицы (сотрудники, лица, присутствие) хранят эмбеддинги в BLOB.
+"""
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, LargeBinary, String
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -34,3 +38,76 @@ class Camera(Base):
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Camera id={self.id} name={self.name!r} host={self.nvr_host} ch={self.channel}>"
+
+
+class Employee(Base):
+    __tablename__ = "employees"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(150))
+    external_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<Employee id={self.id} name={self.name!r}>"
+
+
+class EmployeeFace(Base):
+    """Эмбеддинг лица сотрудника (ArcFace, 512-d float32 → BLOB).
+
+    Один сотрудник может иметь несколько эмбеддингов (разные углы, очки,
+    освещение). thumbnail — маленький JPEG 112x112 выровненного лица
+    для управления в UI; исходные фотографии не хранятся.
+    """
+    __tablename__ = "employee_faces"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(
+        ForeignKey("employees.id", ondelete="CASCADE"), index=True
+    )
+    embedding: Mapped[bytes] = mapped_column(LargeBinary)  # float32 × 512
+    thumbnail: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class PresenceSession(Base):
+    """Сессия присутствия сотрудника на камере.
+
+    Вместо тысяч событий на каждый кадр — одна открытая сессия:
+    started_at при первом подтверждении, last_seen_at обновляется,
+    ended_at = last_seen_at при исчезновении (по таймауту).
+    """
+    __tablename__ = "presence_sessions"
+    __table_args__ = (
+        Index("ix_presence_emp_cam_end", "employee_id", "camera_id", "ended_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(
+        ForeignKey("employees.id", ondelete="CASCADE"), index=True
+    )
+    camera_id: Mapped[int] = mapped_column(
+        ForeignKey("cameras.id", ondelete="CASCADE"), index=True
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class UnknownEvent(Base):
+    """Фиксация постороннего (неопознанного) человека: снимок + камера + время.
+
+    Снимок — JPEG-кроп человека из кадра (доказательство для просмотра в UI
+    и отправки в Telegram)."""
+    __tablename__ = "unknown_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    camera_id: Mapped[int] = mapped_column(
+        ForeignKey("cameras.id", ondelete="CASCADE"), index=True
+    )
+    track_id: Mapped[int] = mapped_column(Integer)
+    snapshot: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

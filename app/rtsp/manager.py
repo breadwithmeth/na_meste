@@ -69,6 +69,11 @@ class ReaderManager:
         with self._lock:
             return self._readers.get(camera_id)
 
+    def reader_ids(self) -> list[int]:
+        """Идентификаторы камер с активными ридерами (для AI-воркера)."""
+        with self._lock:
+            return list(self._readers.keys())
+
     def sync(self, camera: Camera, changed_fields: Optional[set[str]] = None) -> None:
         """Приводит ридер в соответствие с настройками камеры после изменения."""
         with self._lock:

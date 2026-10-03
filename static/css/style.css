@@ -243,6 +243,154 @@ body {
 .stats dd { margin: 0; font-size: 13px; font-weight: 600; }
 #status-badge { display: inline-block; margin-bottom: 8px; }
 
+/* ---------- навигация ---------- */
+.nav { display: flex; gap: 18px; margin-left: 28px; margin-right: auto; }
+.nav-link {
+  color: var(--muted); text-decoration: none; font-size: 14px;
+  padding: 6px 2px; border-bottom: 2px solid transparent;
+}
+.nav-link:hover { color: var(--text); }
+.nav-link.active { color: var(--text); border-bottom-color: var(--accent); }
+.topbar-right { display: flex; gap: 8px; align-items: center; }
+
+.container.wide { max-width: 1100px; }
+
+/* ---------- карточки камер (дашборд) ---------- */
+.camera-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+
+.cam-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  text-decoration: none;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color .15s;
+}
+.cam-card:hover { border-color: var(--accent); }
+
+.cam-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cam-name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cam-meta { font-size: 12px; }
+
+.cam-people { display: flex; gap: 6px; flex-wrap: wrap; }
+.p-badge {
+  font-size: 12px; font-weight: 700; border-radius: 999px;
+  padding: 3px 9px; background: rgba(107, 118, 135, .18); color: var(--muted);
+}
+.p-badge.known { background: rgba(46, 204, 113, .14); color: var(--online); }
+.p-badge.unknown { background: rgba(231, 76, 60, .14); color: var(--error); }
+
+.cam-card-actions { display: flex; gap: 6px; }
+.cam-card-actions .btn { padding: 4px 10px; font-size: 12px; }
+
+/* ---------- bounding boxes поверх видео ---------- */
+.boxes-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.bbox {
+  position: absolute;
+  border: 2px solid var(--reconnecting);
+  border-radius: 4px;
+}
+.bbox.recognized { border-color: var(--online); }
+.bbox.unknown { border-color: var(--error); }
+.bbox.detecting { border-color: var(--connecting); border-style: dashed; }
+.bbox-label {
+  position: absolute;
+  top: -22px; left: -2px;
+  font-size: 12px; font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, .65);
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.bbox.recognized .bbox-label { color: var(--online); }
+.bbox.unknown .bbox-label { color: var(--error); }
+
+/* ---------- сотрудники ---------- */
+.employee-list { list-style: none; margin: 0; padding: 0; }
+.employee-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; padding: 12px 10px; border-bottom: 1px solid var(--border);
+}
+.employee-row:last-child { border-bottom: none; }
+.employee-row a.inactive { color: var(--muted); }
+
+.emp-form .row { align-items: flex-start; }
+
+/* ---------- загрузка фото лиц ---------- */
+.upload-row { margin: 10px 0 14px; }
+.upload-status { list-style: none; margin: 0 0 14px; padding: 0; }
+.upload-item {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 8px 12px; border-radius: 8px; margin-bottom: 6px;
+  background: var(--panel-2); font-size: 13px;
+}
+.upload-item .upload-name { color: var(--muted); font-size: 12px; }
+.upload-item.ok { background: rgba(46, 204, 113, .10); }
+.upload-item.ok .upload-step { color: var(--online); }
+.upload-item.err { background: rgba(231, 76, 60, .10); }
+.upload-item.err .upload-step { color: var(--error); }
+.upload-item.pending .upload-step { color: var(--connecting); }
+.upload-item .warn { color: var(--connecting); font-size: 12px; }
+
+.faces-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+}
+.face-cell { position: relative; }
+.face-cell img {
+  width: 100%; aspect-ratio: 1; object-fit: cover;
+  border-radius: 8px; border: 1px solid var(--border); display: block;
+}
+.face-del {
+  position: absolute; top: 4px; right: 4px;
+  padding: 2px 6px; font-size: 12px;
+  background: rgba(0, 0, 0, .6);
+}
+
+/* ---------- посторонние ---------- */
+.unknown-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+.unknown-cell {
+  position: relative;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.unknown-cell img {
+  width: 100%; height: 220px; object-fit: cover; display: block;
+}
+.unknown-info { padding: 8px 10px; }
+.unknown-cam { font-weight: 600; font-size: 13px; }
+.unknown-cell .face-del { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.6); }
+
+/* ---------- таблицы ---------- */
+.table-wrap { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table th {
+  text-align: left; color: var(--muted); font-weight: 600;
+  padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+
 @media (max-width: 800px) {
   .view { grid-template-columns: 1fr; }
+  .nav { margin-left: 8px; gap: 10px; }
 }
