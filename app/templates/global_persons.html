@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Люди — PALEVO</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="dot"></span> PALEVO</a>
+    <nav class="nav">
+      <a href="/" class="nav-link">Камеры</a>
+      <a href="/employees" class="nav-link">Сотрудники</a>
+      <a href="/presence" class="nav-link">Присутствие</a>
+      <a href="/unknown" class="nav-link">Посторонние</a>
+      <a href="/global" class="nav-link active">Люди</a>
+    </nav>
+    <span id="summary" class="muted"></span>
+  </header>
+
+  <main class="container wide">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Глобальные личности</h2>
+        <span class="muted small">Один человек = один global_id на всех камерах (межкамерный Re-ID трекинг)</span>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="persons-table">
+          <thead>
+            <tr>
+              <th>Global ID</th><th>Статус</th><th>Сотрудник</th>
+              <th>Последняя камера</th><th>Наблюдений</th><th>Последнее наблюдение</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="empty" class="empty" hidden>Глобальных личностей пока нет.</div>
+    </section>
+  </main>
+
+  <script src="/static/js/global_persons.js"></script>
+</body>
+</html>

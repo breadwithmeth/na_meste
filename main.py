@@ -19,6 +19,7 @@ from app.ai.providers import provider_label
 from app.ai.worker import build_ai_worker, build_enroll_engine
 from app.api.cameras import router as cameras_router
 from app.api.employees import router as employees_router
+from app.api.global_persons import router as global_persons_router
 from app.api.presence import router as presence_router
 from app.api.unknown import router as unknown_router
 from app.config import BASE_DIR, settings
@@ -82,6 +83,8 @@ async def lifespan(app: FastAPI):
         worker = build_ai_worker(
             app.state.manager, app.state.presence, app.state.embedding_store,
             unknown_manager=app.state.unknown_manager,
+            session_factory=SessionLocal,
+            notifier=notifier,
         )
         if worker is not None:
             worker.start()
@@ -112,6 +115,7 @@ app.include_router(cameras_router)
 app.include_router(employees_router)
 app.include_router(presence_router)
 app.include_router(unknown_router)
+app.include_router(global_persons_router)
 
 
 @app.get("/", include_in_schema=False)
@@ -146,6 +150,18 @@ async def presence_page(request: Request):
 @app.get("/unknown", include_in_schema=False)
 async def unknown_page(request: Request):
     return templates.TemplateResponse(request, "unknown.html", {})
+
+
+@app.get("/global", include_in_schema=False)
+async def global_persons_page(request: Request):
+    return templates.TemplateResponse(request, "global_persons.html", {})
+
+
+@app.get("/global/{global_id}", include_in_schema=False)
+async def global_person_page(request: Request, global_id: int):
+    return templates.TemplateResponse(
+        request, "global_person_detail.html", {"global_id": global_id}
+    )
 
 
 if __name__ == "__main__":

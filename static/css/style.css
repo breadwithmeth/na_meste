@@ -379,7 +379,27 @@ body {
 }
 .unknown-info { padding: 8px 10px; }
 .unknown-cam { font-weight: 600; font-size: 13px; }
+.unknown-cam .gid-badge {
+  color: var(--accent); text-decoration: none; font-size: 12px;
+  font-weight: 700; border: 1px solid var(--accent);
+  border-radius: 999px; padding: 1px 7px; white-space: nowrap;
+}
+.unknown-cam .gid-badge:hover { background: rgba(79, 140, 255, .15); }
 .unknown-cell .face-del { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.6); }
+
+/* ---------- глобальные личности ---------- */
+.trajectory { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.traj-node {
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 14px;
+  display: flex; flex-direction: column; line-height: 1.3;
+  font-weight: 600; font-size: 14px;
+}
+.traj-arrow { color: var(--accent); font-size: 18px; font-weight: 700; }
+.obs-thumb {
+  height: 64px; border-radius: 4px; border: 1px solid var(--border);
+  display: block;
+}
 
 /* ---------- таблицы ---------- */
 .table-wrap { overflow-x: auto; }

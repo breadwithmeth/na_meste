@@ -215,6 +215,26 @@ def api_camera_detections(
     return data
 
 
+@router.get("/{camera_id}/tracks")
+def api_camera_tracks(
+    camera_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Активные локальные треки камеры с привязкой к global_id
+    (межкамерный трекинг)."""
+    _camera_or_404(db, camera_id)
+    worker = getattr(request.app.state, "ai_worker", None)
+    global_manager = getattr(worker, "global_manager", None) if worker else None
+    if global_manager is None:
+        return {"camera_id": camera_id, "multi_camera_tracking": False, "tracks": []}
+    return {
+        "camera_id": camera_id,
+        "multi_camera_tracking": True,
+        "tracks": global_manager.camera_tracks(camera_id),
+    }
+
+
 # ------------------------------------------------------------ MJPEG-поток
 
 def _encode_jpeg(frame: np.ndarray) -> bytes:

@@ -5,9 +5,14 @@
 - **Камеры**: подключение к IP-видеорегистраторам **Dahua** по RTSP, живое превью (MJPEG)
 - **AI**: обнаружение людей (YOLO), трекинг (ByteTrack), распознавание лиц
   сотрудников (InsightFace/ArcFace), сессии присутствия
-- **Посторонние**: фиксация неопознанных людей (снимок + камера + время)
+- **Посторонние**: фиксация неопознанных людей (снимок + камера + время);
+  каждая фиксация связана с глобальной личностью человека (G#id) —
+  на странице «Посторонние» видно, сколько раз этого же человека ловили
+  и на каких камерах (переход по ссылке на его траекторию)
 - **Telegram**: уведомления в группу — посторонний (с фото), сотрудник
-  пришёл / ушёл
+  пришёл / ушёл, переход человека между камерами (с фото)
+- **Межкамерный трекинг**: один человек = один global_id на всех камерах
+  (Person Re-ID OSNet + composite matching + топология камер)
 
 RTSP-модуль не зависит от AI; AI получает кадры из его буфера.
 
@@ -136,6 +141,9 @@ python main.py
 - **Присутствие**: кто сейчас на камерах + история сессий
 - **Посторонние**: галерея зафиксированных неопознанных людей (снимок,
   камера, время) + каждое событие уходит в Telegram
+- **Люди**: глобальные личности (межкамерный трекинг) — список, карточка
+  с траекторией (цепочка камер) и таймлайном наблюдений со снимками;
+  на странице камеры боксы подписаны `T<трек>·G<global_id>`
 
 ## Фиксация посторонних и Telegram
 
@@ -152,6 +160,13 @@ python main.py
 
 Уведомления о сотрудниках: «Присутствие началось» и «Сессия закрыта»
 (время начала/конца и длительность). Настраивается `TELEGRAM_NOTIFY_*`.
+
+Уведомления о переходах между камерами (межкамерный трекинг): при смене
+камеры глобальной личностью в группу приходит фото с подписью
+«🔄 G#184 (Иван Петров): «Касса 1» → «Склад», сходство 0.91»
+(`TELEGRAM_NOTIFY_GLOBAL_TRANSITION=true`). Оповещение о каждой новой
+глобальной личности выключено по умолчанию (`TELEGRAM_NOTIFY_GLOBAL_NEW=false`)
+— оно дублирует фиксацию посторонних.
 
 ### Настройка Telegram
 
@@ -172,6 +187,60 @@ TELEGRAM_NOTIFY_PRESENCE=true
 не появится `/start`, и сохраняет chat_id в `data/telegram_chat_id.txt`.
 Отправка идёт через очередь в фоновом потоке — проблемы с сетью не влияют
 на AI и превью. Токен никогда не логируется.
+
+## Межкамерный трекинг (Multi-Camera Person Tracking)
+
+Один человек, перемещающийся между камерами, получает единый `global_id`
+на уровне всей системы. Локальный `track_id` остаётся per-camera.
+
+```text
+CAM-01 → track_id=17 ─┐
+                     ├→ global_id=184      (Person Re-ID OSNet + composite score)
+CAM-02 → track_id=42 ─┘
+```
+
+Слой над существующим пайплайном (локальный трекинг не меняется):
+
+1. для устойчивого трека периодически (`REID_EMBEDDING_INTERVAL`, по умолчанию
+   2.5 с) считается appearance-эмбеддинг (OSNet x0_25, 512-d, GPU);
+2. новый локальный трек матчится с активными глобальными личностями по
+   **composite score**:
+
+   `final = W_REID·reid + W_TEMPORAL·время + W_TOPOLOGY·топология
+   + W_ASPECT·пропорции + W_FACE·лицо`
+
+   Лицо — дополнительный сигнал: два трека одного сотрудника (распознаны
+   лицом) — сильный бонус, разных сотрудников — veto;
+3. топология (`topology.json`, см. `topology.json.example`): переход между
+   камерами допустим только за `min_seconds..max_seconds`, иначе матч
+   отклоняется — «человек физически не мог туда попасть»;
+4. **ложное слияние опаснее лишнего ID**: при score ниже порога или
+   неоднозначности (два кандидата ближе `GLOBAL_MATCH_MARGIN`) создаётся
+   новая личность, сомнительный матч пишется как `ambiguous_match`;
+5. события: `person_seen` (появление на камере) и `camera_transition`
+   (переход) — в таблице `global_events`, история эмбеддингов и снимки —
+   в `global_observations` (persistent identity gallery);
+6. ошибки Re-ID/БД изолированы: RTSP → detection → tracking продолжают
+   работать (проверено тестами).
+
+Включение/выключение: `MULTI_CAMERA_TRACKING_ENABLED=false` — система
+работает ровно как раньше. Отладка: `MC_DEBUG=true` выводит
+`[REID]/[MATCH]/[IDENTITY]`-логи.
+
+### Модель Re-ID
+
+`models/osnet_x0_25_msmt17.onnx` (~1 МБ) — скачивается один раз:
+
+```bash
+curl -L -o models/osnet_x0_25_msmt17.onnx \
+  "https://huggingface.co/anriha/osnet_x0_25_msmt17/resolve/main/osnet_x0_25_msmt17.onnx"
+```
+
+### Топология камер
+
+Скопируйте `topology.json.example` → `topology.json`, укажите id камер и
+допустимые времена переходов, затем `TOPOLOGY_CONFIG=topology.json` в .env.
+Без топологии матчи идут только по Re-ID + времени (нейтральная оценка).
 
 ## Как работает распознавание
 
@@ -263,9 +332,18 @@ curl "http://localhost:8000/api/presence?limit=100"
 curl http://localhost:8000/api/presence/employee/1
 
 # Посторонние
-curl http://localhost:8000/api/unknown?limit=50
+curl http://localhost:8000/api/unknown?limit=50          # + global_id каждой фиксации
+curl "http://localhost:8000/api/unknown?global_id=184"   # все фиксации конкретного человека
 curl http://localhost:8000/api/unknown/1/photo -o person.jpg
 curl -X DELETE http://localhost:8000/api/unknown/1
+
+# Межкамерный трекинг
+curl http://localhost:8000/api/global-persons
+curl http://localhost:8000/api/global-persons/1
+curl http://localhost:8000/api/global-persons/1/timeline
+curl http://localhost:8000/api/global-persons/1/trajectory
+curl http://localhost:8000/api/global-persons/1/observations
+curl http://localhost:8000/api/cameras/1/tracks
 ```
 
 ## Безопасность
@@ -283,21 +361,24 @@ curl -X DELETE http://localhost:8000/api/unknown/1
 ├── main.py                     # вход: python main.py
 ├── requirements.txt
 ├── .env.example
+├── topology.json.example       # топология камер для межкамерного трекинга
 ├── data/app.db                 # SQLite: cameras, employees, employee_faces,
-│                               # presence_sessions, unknown_events
-├── models/                     # yolov8n.onnx, buffalo_l/
+│                               # presence_sessions, unknown_events,
+│                               # global_persons, global_observations, global_events
+├── models/                     # yolov8n.onnx, buffalo_l/, osnet_x0_25_msmt17.onnx
 ├── app/
 │   ├── config.py               # настройки (.env)
-│   ├── api/                    # cameras.py, employees.py, presence.py, unknown.py
+│   ├── api/                    # cameras.py, employees.py, presence.py,
+│   │                           # unknown.py, global_persons.py
 │   ├── database/               # database.py, models.py
 │   ├── rtsp/                   # dahua.py, reader.py, manager.py (без изменений AI)
 │   ├── ai/                     # detector.py, tracker.py, face_detector.py,
 │   │                           # face_recognition.py, recognition_service.py,
-│   │                           # worker.py, providers.py
+│   │                           # reid.py, global_tracker.py, worker.py, providers.py
 │   ├── services/               # camera_service, employee_service, presence_service,
 │   │                           # unknown_service, telegram_service
 │   └── templates/              # index, camera, employees, employee_detail,
-│                               # presence, unknown
+│                               # presence, unknown, global_persons, global_person_detail
 └── static/                     # css + vanilla js
 ```
 

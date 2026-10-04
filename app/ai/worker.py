@@ -49,6 +49,7 @@ class DetectionState:
                 "confidence": d.confidence,
                 "bbox": list(d.bbox),
                 "state": d.state,
+                "global_id": d.global_id,
             }
             for d in detections
         ]
@@ -86,6 +87,7 @@ class AIWorker(threading.Thread):
         presence: PresenceManager,
         detection_state: DetectionState,
         unknown_manager=None,
+        global_manager=None,
     ):
         super().__init__(name="ai-worker", daemon=True)
         self.manager = manager
@@ -93,12 +95,14 @@ class AIWorker(threading.Thread):
         self.presence = presence
         self.state = detection_state
         self.unknown_manager = unknown_manager
+        self.global_manager = global_manager
         self._stop = threading.Event()
         self._last_seq: dict[int, int] = {}
         self._last_ts: dict[int, float] = {}
         self._last_cleanup = 0.0
         self._last_unknown: dict[int, float] = {}
         self._last_unknown_cleanup = 0.0
+        self._last_global_cleanup = 0.0
 
     def stop(self, timeout: float = 3.0) -> None:
         self._stop.set()
@@ -136,17 +140,35 @@ class AIWorker(threading.Thread):
                 except Exception:
                     logger.exception("Camera %d: ошибка AI-обработки кадра", camera_id)
                     continue
+
+                # межкамерный трекинг: Re-ID + глобальные identity.
+                # Ошибки этого слоя не должны останавливать pipeline —
+                # detection/tracking/presence продолжают работать.
+                if self.global_manager is not None:
+                    try:
+                        self.global_manager.process(camera_id, outcome, frame, now)
+                    except Exception:
+                        logger.exception(
+                            "Camera %d: ошибка глобального трекинга — "
+                            "локальный трекинг продолжается", camera_id,
+                        )
+
                 self.state.update(camera_id, outcome.detections)
                 for _track_id, employee_id, confidence in outcome.new_recognitions:
                     self.presence.on_recognized(camera_id, employee_id, confidence)
                 # фиксация посторонних (с cooldown на камеру, чтобы трек-чёрн
-                # одного человека не заспамил события)
+                # одного человека не заспамил события); фиксация связывается
+                # с глобальной личностью человека, если трекинг включён
                 if outcome.unknown_events and self.unknown_manager is not None:
                     if (now - self._last_unknown.get(camera_id, 0.0)
                             >= settings.unknown_event_cooldown):
                         self._last_unknown[camera_id] = now
                         track_id, bbox = outcome.unknown_events[0]
-                        self.unknown_manager.record(camera_id, track_id, frame, bbox)
+                        global_id = next(
+                            (d.global_id for d in outcome.detections
+                             if d.track_id == track_id), None)
+                        self.unknown_manager.record(
+                            camera_id, track_id, frame, bbox, global_id=global_id)
                 did_work = True
 
             # закрыть сессии присутствия, истёкшие по таймауту
@@ -162,10 +184,14 @@ class AIWorker(threading.Thread):
                         self._last_unknown.pop(camera_id, None)
                         self.service.drop_camera(camera_id)
                         self.state.drop_camera(camera_id)
-                # раз в час — удалить старые фиксации посторонних
+                # раз в час — удалить старые фиксации посторонних и глобальные данные
                 if self.unknown_manager is not None and now - self._last_unknown_cleanup > 3600.0:
                     self._last_unknown_cleanup = now
                     self.unknown_manager.cleanup()
+                if (self.global_manager is not None
+                        and now - self._last_global_cleanup > 3600.0):
+                    self._last_global_cleanup = now
+                    self.global_manager.cleanup()
 
             if not did_work:
                 self._stop.wait(0.05)
@@ -199,7 +225,7 @@ def build_enroll_engine() -> Optional[FaceEngine]:
 
 def build_ai_worker(
     manager: ReaderManager, presence: PresenceManager, store: EmbeddingStore,
-    unknown_manager=None,
+    unknown_manager=None, session_factory=None, notifier=None,
 ) -> Optional[AIWorker]:
     """Собирает полный AI-стек. None — модели недоступны (приложение работает
     только как RTSP-превью, не падая)."""
@@ -210,6 +236,30 @@ def build_ai_worker(
     if not yolo_path.is_file():
         logger.error("YOLO-модель не найдена: %s — AI отключён (см. README)", yolo_path)
         return None
+
+    # межкамерный трекинг (опциональный слой, не ломает остальное)
+    global_manager = None
+    if settings.multi_camera_tracking_enabled and session_factory is not None:
+        reid_path = BASE_DIR / settings.reid_model
+        if reid_path.is_file():
+            try:
+                from app.ai.global_tracker import CameraTopology, GlobalIdentityManager
+                from app.ai.reid import PersonReID
+
+                reid = PersonReID(str(reid_path), providers)
+                topology = CameraTopology.load(settings.topology_config)
+                global_manager = GlobalIdentityManager(
+                    session_factory, reid, topology, notifier=notifier
+                )
+                logger.info("Межкамерный трекинг включён (Re-ID: %s)",
+                            reid_path.name)
+            except Exception:
+                logger.exception(
+                    "Межкамерный трекинг не запустился — система работает без него")
+                global_manager = None
+        else:
+            logger.warning("Re-ID модель не найдена: %s — межкамерный трекинг "
+                           "отключён (см. README)", reid_path)
 
     try:
         detector = PersonDetector(str(yolo_path), providers, settings.person_confidence)
@@ -234,4 +284,6 @@ def build_ai_worker(
     )
     state = DetectionState()
     logger.info("AI Provider: %s", provider_label(detector.session.get_providers()))
-    return AIWorker(manager, service, presence, state, unknown_manager=unknown_manager)
+    return AIWorker(manager, service, presence, state,
+                    unknown_manager=unknown_manager,
+                    global_manager=global_manager)

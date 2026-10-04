@@ -41,15 +41,19 @@ async function refresh() {
 // ---------- bounding boxes ----------
 
 function labelFor(track) {
+  let base;
   if (track.state === 'recognized' && track.employee_name) {
     const conf = track.confidence != null ? track.confidence.toFixed(2) : '';
-    return `${track.employee_name}${conf ? ' ' + conf : ''}`;
-  }
-  if (track.state === 'unknown') {
+    base = `${track.employee_name}${conf ? ' ' + conf : ''}`;
+  } else if (track.state === 'unknown') {
     const conf = track.confidence != null ? track.confidence.toFixed(2) : '';
-    return `Unknown${conf ? ' ' + conf : ''}`;
+    base = `Unknown${conf ? ' ' + conf : ''}`;
+  } else {
+    base = '…';
   }
-  return '…';
+  // глобальная личность (межкамерный трекинг): локальный трек + global_id
+  const tag = `T${track.track_id}` + (track.global_id ? `·G${track.global_id}` : '');
+  return `${base} [${tag}]`;
 }
 
 async function refreshBoxes() {

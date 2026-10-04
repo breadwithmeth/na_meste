@@ -35,6 +35,7 @@ class DetectionResult:
     bbox: tuple[float, float, float, float]
     state: str                      # recognized | unknown | detecting
     just_confirmed: bool = False    # подтверждён именно на этом кадре
+    global_id: Optional[int] = None # проставляет GlobalIdentityManager (межкамерный слой)
 
 
 @dataclass
@@ -125,11 +126,13 @@ class RecognitionService:
         """Кроп области головы → детекция лица → эмбеддинг → сравнение → подтверждение."""
         x1, y1, x2, y2 = track.bbox
         box_w, box_h = x2 - x1, y2 - y1
-        # лицо — в верхней части person-bbox; немного расширяем по горизонтали
+        # лицо — в верхней части person-bbox; «низкий» бокс (шире, чем выше)
+        # обычно покрывает только голову/плечи — ищем лицо по всему боксу
+        head_ratio = 0.55 if box_h > 1.2 * box_w else 1.0
         hx1 = max(0, int(x1 - box_w * 0.05))
         hx2 = min(frame.shape[1], int(x2 + box_w * 0.05))
         hy1 = max(0, int(y1))
-        hy2 = min(frame.shape[0], int(y1 + box_h * 0.55))
+        hy2 = min(frame.shape[0], int(y1 + box_h * head_ratio))
         if hy2 - hy1 < 40 or hx2 - hx1 < 40:
             return  # голова слишком мала для распознавания на этом потоке
 

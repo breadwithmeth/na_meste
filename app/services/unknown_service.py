@@ -18,10 +18,12 @@ class UnknownEventsManager:
         self.notifier = notifier
         self.keep_days = keep_days
 
-    def record(self, camera_id: int, track_id: int, frame, bbox) -> None:
+    def record(self, camera_id: int, track_id: int, frame, bbox,
+               global_id: int | None = None) -> None:
         """Кроп человека из кадра → JPEG → событие в БД → фото в Telegram.
 
-        Ошибки не должны ломать AI-воркер — ловим и логируем.
+        global_id связывает фиксацию с глобальной личностью (межкамерный
+        трекинг посторонних). Ошибки не должны ломать AI-воркер.
         """
         try:
             snapshot = self._crop_person(frame, bbox)
@@ -29,15 +31,18 @@ class UnknownEventsManager:
                 camera = db.get(Camera, camera_id)
                 camera_name = camera.name if camera else f"камера #{camera_id}"
                 event = UnknownEvent(
-                    camera_id=camera_id, track_id=track_id, snapshot=snapshot
+                    camera_id=camera_id, track_id=track_id,
+                    global_id=global_id, snapshot=snapshot,
                 )
                 db.add(event)
                 db.commit()
             logger.info(
-                "Camera %d: неизвестный человек зафиксирован track=%d", camera_id, track_id
+                "Camera %d: неизвестный человек зафиксирован track=%d global_id=%s",
+                camera_id, track_id, global_id,
             )
             if self.notifier is not None:
-                self.notifier.send_photo(snapshot, self._caption(camera_name))
+                self.notifier.send_photo(
+                    snapshot, self._caption(camera_name, global_id))
         except Exception:
             logger.exception("Unknown: не удалось зафиксировать событие (cam=%s)", camera_id)
 
@@ -75,6 +80,7 @@ class UnknownEventsManager:
         return buf.tobytes()
 
     @staticmethod
-    def _caption(camera_name: str) -> str:
+    def _caption(camera_name: str, global_id: int | None = None) -> str:
         local = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-        return f"⚠️ Посторонний\nКамера: {camera_name}\nВремя: {local}"
+        who = f" (G#{global_id})" if global_id else ""
+        return f"⚠️ Посторонний{who}\nКамера: {camera_name}\nВремя: {local}"

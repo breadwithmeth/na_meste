@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Global — PALEVO</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="dot"></span> PALEVO</a>
+    <nav class="nav">
+      <a href="/" class="nav-link">Камеры</a>
+      <a href="/employees" class="nav-link">Сотрудники</a>
+      <a href="/presence" class="nav-link">Присутствие</a>
+      <a href="/unknown" class="nav-link">Посторонние</a>
+      <a href="/global" class="nav-link active">Люди</a>
+    </nav>
+    <span id="gp-title" class="muted">Global</span>
+  </header>
+
+  <main class="container wide">
+    <!-- Траектория -->
+    <section class="panel">
+      <div class="panel-head"><h2>Траектория</h2></div>
+      <div id="trajectory" class="trajectory"></div>
+    </section>
+
+    <!-- Таймлайн -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Таймлайн</h2>
+        <span class="muted small">Наблюдения (со снимками) и события — переходы между камерами</span>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="timeline-table">
+          <thead>
+            <tr><th>Время</th><th>Тип</th><th>Камера</th><th>Track</th><th>Детали</th><th>Снимок</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="timeline-empty" class="empty">Наблюдений пока нет.</div>
+    </section>
+  </main>
+
+  <script>window.GLOBAL_ID = {{ global_id }};</script>
+  <script src="/static/js/global_person_detail.js"></script>
+</body>
+</html>

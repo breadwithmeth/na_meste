@@ -57,8 +57,30 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""              # пусто — авто-определение по /start в группе
     telegram_notify_unknown: bool = True    # посторонний (с фото)
     telegram_notify_presence: bool = True   # сотрудник пришёл / ушёл
+    telegram_notify_global_transition: bool = True  # человек перешёл между камерами (с фото)
+    telegram_notify_global_new: bool = False        # новый global_id (дублирует «посторонних»)
     unknown_event_cooldown: float = 60.0    # сек между фиксациями на одной камере
     unknown_keep_days: int = 30             # сколько дней хранить события
+
+    # --- Межкамерный трекинг (Multi-Camera Person Tracking) ---
+    multi_camera_tracking_enabled: bool = True
+    reid_model: str = "models/osnet_x0_25_msmt17.onnx"
+    reid_embedding_interval: float = 2.5    # сек между обновлениями эмбеддинга трека
+    reid_similarity_threshold: float = 0.80 # мин. косинус OSNet для кандидата
+    global_match_threshold: float = 0.65    # мин. composite score для связывания
+    global_match_margin: float = 0.05       # мин. отрыв от второго кандидата (неоднозначность)
+    global_gallery_ttl: float = 600.0       # сек жизни identity в памяти без наблюдений
+    global_history_len: int = 20            # эмбеддингов в истории identity
+    global_keep_days: int = 30              # хранение наблюдений/событий в БД
+    topology_config: str = ""               # topology.json — пусто = без ограничений
+    mc_debug: bool = False                  # подробные логи [REID]/[MATCH]/[IDENTITY]
+
+    # веса composite score (сумма ≈ 1.0)
+    w_reid: float = 0.55
+    w_temporal: float = 0.15
+    w_topology: float = 0.15
+    w_aspect: float = 0.05
+    w_face: float = 0.10
 
     def ai_camera_ids(self) -> set[int] | None:
         """Идентификаторы камер для AI; None = все."""

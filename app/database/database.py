@@ -53,7 +53,26 @@ def init_db() -> None:
     from app.database import models  # noqa: F401 — регистрация таблиц
 
     Base.metadata.create_all(engine)
+    _migrate_sqlite()
     logger.info("База данных готова: %s", RESOLVED_DB_URL)
+
+
+def _migrate_sqlite() -> None:
+    """Маленькие миграции существующих таблиц (SQLite ALTER TABLE):
+    create_all не добавляет колонки в уже созданные таблицы."""
+    if not _IS_SQLITE:
+        return
+    try:
+        with engine.begin() as conn:
+            # unknown_events.global_id — трекинг посторонних (межкамерный слой)
+            columns = [row[1] for row in
+                       conn.exec_driver_sql("PRAGMA table_info(unknown_events)")]
+            if columns and "global_id" not in columns:
+                conn.exec_driver_sql(
+                    "ALTER TABLE unknown_events ADD COLUMN global_id INTEGER")
+                logger.info("Миграция: unknown_events + global_id")
+    except Exception:
+        logger.exception("Миграция SQLite не выполнена")
 
 
 def get_db():

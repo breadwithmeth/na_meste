@@ -40,6 +40,18 @@ async function load() {
     const cam = document.createElement('div');
     cam.className = 'unknown-cam';
     cam.textContent = ev.camera_name || `камера #${ev.camera_id}`;
+    // трекинг постороннего: ссылка на глобальную личность + сколько фиксаций
+    if (ev.global_id) {
+      const gid = document.createElement('a');
+      gid.className = 'gid-badge';
+      gid.href = `/global/${ev.global_id}`;
+      const samePerson = events.filter((e) => e.global_id === ev.global_id).length;
+      gid.textContent = `G#${ev.global_id}`
+        + (samePerson > 1 ? ` · фиксаций: ${samePerson}` : '');
+      gid.title = 'Глобальная личность — таймлайн и траектория';
+      cam.appendChild(document.createTextNode(' '));
+      cam.appendChild(gid);
+    }
     const time = document.createElement('div');
     time.className = 'muted small';
     time.textContent = fmtDateTime(ev.created_at);

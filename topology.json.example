@@ -1,0 +1,16 @@
+{
+  "_комментарий": "Пример топологии камер для межкамерного трекинга. Скопируйте в topology.json и укажите TOPOLOGY_CONFIG=topology.json в .env. Камеры задаются их id из системы. from/to — переход человека; если время перехода вне [min_seconds, max_seconds], матч по этим камерам запрещается (veto). camera_topology.next задаёт связность без явных времён (окно 0-600 сек по умолчанию).",
+
+  "camera_topology": {
+    "1": { "next": ["2", "3"] },
+    "2": { "next": ["4"] },
+    "3": { "next": ["5"] }
+  },
+
+  "transitions": [
+    { "from": 1, "to": 2, "min_seconds": 3, "max_seconds": 120 },
+    { "from": 1, "to": 3, "min_seconds": 3, "max_seconds": 120 },
+    { "from": 2, "to": 4, "min_seconds": 5, "max_seconds": 180 },
+    { "from": 3, "to": 5, "min_seconds": 5, "max_seconds": 180 }
+  ]
+}

@@ -101,7 +101,8 @@ class UnknownEvent(Base):
     """Фиксация постороннего (неопознанного) человека: снимок + камера + время.
 
     Снимок — JPEG-кроп человека из кадра (доказательство для просмотра в UI
-    и отправки в Telegram)."""
+    и отправки в Telegram). global_id связывает фиксацию с глобальной
+    личностью (межкамерный трекинг посторонних)."""
     __tablename__ = "unknown_events"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -109,5 +110,62 @@ class UnknownEvent(Base):
         ForeignKey("cameras.id", ondelete="CASCADE"), index=True
     )
     track_id: Mapped[int] = mapped_column(Integer)
+    global_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     snapshot: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class GlobalPerson(Base):
+    """Глобальная личность человека (global_id) — единая для всех камер.
+
+    Локальные track_id привязываются к global_id через GlobalIdentityManager
+    (composite matching: Re-ID + время + топология + лицо).
+    """
+    __tablename__ = "global_persons"
+
+    id: Mapped[int] = mapped_column(primary_key=True)          # = global_id
+    employee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("employees.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(20), default="ACTIVE")  # NEW/ACTIVE/LOST
+    last_camera_id: Mapped[int | None] = mapped_column(
+        ForeignKey("cameras.id", ondelete="SET NULL"), nullable=True
+    )
+    last_track_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class GlobalObservation(Base):
+    """Наблюдение глобальной личности: появление на камере с новым локальным
+    треком. Хранит appearance-эмбеддинг (OSNet, 512-d) — это persistent
+    identity gallery — и снимок для таймлайна в UI."""
+    __tablename__ = "global_observations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    global_id: Mapped[int] = mapped_column(
+        ForeignKey("global_persons.id", ondelete="CASCADE"), index=True
+    )
+    camera_id: Mapped[int] = mapped_column(
+        ForeignKey("cameras.id", ondelete="CASCADE"), index=True
+    )
+    track_id: Mapped[int] = mapped_column(Integer)
+    embedding: Mapped[bytes] = mapped_column(LargeBinary)
+    snapshot: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class GlobalEvent(Base):
+    """События глобального трекинга: person_seen / camera_transition / person_lost.
+    payload — JSON с деталями матча (score, similarity, from/to)."""
+    __tablename__ = "global_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    global_id: Mapped[int] = mapped_column(
+        ForeignKey("global_persons.id", ondelete="CASCADE"), index=True
+    )
+    event_type: Mapped[str] = mapped_column(String(30))
+    camera_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    track_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    payload: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
