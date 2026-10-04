@@ -84,6 +84,18 @@ class Settings(BaseSettings):
     w_aspect: float = 0.05
     w_face: float = 0.10
 
+    # --- Распознавание действий (поза → сидит/работает/отдыхает/кушает…) ---
+    # Опциональный слой НАД трекингом: раз в ACTION_INTERVAL секунд для трека
+    # оценивается поза (yolov8n-pose) и классифицируется действие.
+    action_recognition_enabled: bool = True
+    action_model: str = "models/yolov8n-pose.onnx"
+    action_interval: float = 1.0        # сек между оценками позы на трек
+    action_smooth_seconds: float = 6.0  # окно голосования действий, сек
+    action_pose_confidence: float = 0.30  # мин. уверенность ключевой точки
+    action_log_interval: float = 10.0   # сек между записями в БД без смены действия
+    action_rest_after: float = 15.0     # сек сидения без активности рук → «отдыхает»
+    action_keep_days: int = 30          # хранение action_observations
+
     # --- 2.5D Spatial World Model (метрическая модель помещения) ---
     # Опциональный слой НАД существующим трекингом: foot point → гомография →
     # мировые координаты → spatial/temporal/direction-оценки в матчинге.

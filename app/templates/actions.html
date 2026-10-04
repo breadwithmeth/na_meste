@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% set active_page = 'actions' %}
+
+{% block title %}Действия{% endblock %}
+
+{% block content %}
+  <main class="container">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Сейчас</h2>
+        <span id="live-summary" class="muted"></span>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="live-table">
+          <thead>
+            <tr><th>Кто</th><th>Камера</th><th>Действие</th><th>Уверенность</th><th>Начало</th><th>Длится</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="live-empty" class="empty">Сейчас никого с распознанным действием.</div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Сводка</h2>
+        <span class="muted small">за последние <input id="summary-hours" type="number" min="1" max="720" value="8" style="width:56px"> ч · приблизительно (по наблюдениям)</span>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="summary-table">
+          <thead>
+            <tr><th>Кто</th><th>Действия</th><th>Всего</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="summary-empty" class="empty">Наблюдений пока нет.</div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>История</h2>
+        <select id="history-filter" style="color:inherit">
+          <option value="">все действия</option>
+          <option value="working">работает</option>
+          <option value="sitting">сидит</option>
+          <option value="standing">стоит</option>
+          <option value="walking">идёт</option>
+          <option value="resting">отдыхает</option>
+          <option value="eating">ест/пьёт</option>
+          <option value="phone">телефон</option>
+          <option value="lying">лежит</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="history-table">
+          <thead>
+            <tr><th>Время</th><th>Кто</th><th>Камера</th><th>Действие</th><th>Уверенность</th><th>Трек</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="history-empty" class="empty">Истории пока нет.</div>
+    </section>
+  </main>
+{% endblock %}
+
+{% block scripts %}
+  <script src="/static/js/actions.js"></script>
+{% endblock %}

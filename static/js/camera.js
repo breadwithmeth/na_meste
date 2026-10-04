@@ -4,6 +4,11 @@ const cameraId = window.CAMERA_ID;
 const $ = (id) => document.getElementById(id);
 const boxesEl = $('boxes');
 
+const ACTION_LABELS = {
+  standing: 'стоит', walking: 'идёт', sitting: 'сидит', lying: 'лежит',
+  eating: 'ест/пьёт', phone: 'телефон', working: 'работает', resting: 'отдыхает',
+};
+
 async function refresh() {
   let cam;
   try {
@@ -80,6 +85,14 @@ async function refreshBoxes() {
     label.className = 'bbox-label';
     label.textContent = labelFor(track);
     box.appendChild(label);
+
+    // действие человека (сидит/работает/отдыхает/…) — чипом внутри бокса
+    if (track.action && ACTION_LABELS[track.action]) {
+      const chip = document.createElement('span');
+      chip.className = `act-chip act-${track.action}`;
+      chip.textContent = ACTION_LABELS[track.action];
+      box.appendChild(chip);
+    }
     boxesEl.appendChild(box);
   }
 }

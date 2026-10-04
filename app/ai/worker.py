@@ -50,6 +50,9 @@ class DetectionState:
                 "bbox": list(d.bbox),
                 "state": d.state,
                 "global_id": d.global_id,
+                "action": d.action,
+                "action_confidence": d.action_confidence,
+                "action_since": d.action_since,
             }
             for d in detections
         ]
@@ -66,6 +69,11 @@ class DetectionState:
     def camera(self, camera_id: int) -> Optional[dict]:
         with self._lock:
             return self._data.get(camera_id)
+
+    def snapshot(self) -> list[dict]:
+        """Последние результаты по всем камерам (для /api/actions/live)."""
+        with self._lock:
+            return list(self._data.values())
 
     def counts(self, camera_id: int) -> tuple[int, int, int]:
         with self._lock:
@@ -89,6 +97,8 @@ class AIWorker(threading.Thread):
         unknown_manager=None,
         global_manager=None,
         spatial_model=None,
+        action_recognizer=None,
+        action_log=None,
     ):
         super().__init__(name="ai-worker", daemon=True)
         self.manager = manager
@@ -98,6 +108,8 @@ class AIWorker(threading.Thread):
         self.unknown_manager = unknown_manager
         self.global_manager = global_manager
         self.spatial_model = spatial_model
+        self.action_recognizer = action_recognizer
+        self.action_log = action_log
         self._stop = threading.Event()
         self._last_seq: dict[int, int] = {}
         self._last_ts: dict[int, float] = {}
@@ -106,6 +118,7 @@ class AIWorker(threading.Thread):
         self._last_unknown_cleanup = 0.0
         self._last_global_cleanup = 0.0
         self._last_spatial_cleanup = 0.0
+        self._last_action_cleanup = 0.0
 
     def stop(self, timeout: float = 3.0) -> None:
         self._stop.set()
@@ -168,6 +181,18 @@ class AIWorker(threading.Thread):
                             "локальный трекинг продолжается", camera_id,
                         )
 
+                # распознавание действий (поза → сидит/работает/отдыхает/…):
+                # обогащает detections полем action до отдачи в UI/API.
+                # Ошибки слоя не останавливают pipeline.
+                if self.action_recognizer is not None:
+                    try:
+                        self.action_recognizer.process(
+                            camera_id, outcome.detections, frame, now)
+                    except Exception:
+                        logger.exception(
+                            "Camera %d: ошибка распознавания действий — "
+                            "трекинг продолжается", camera_id)
+
                 # spatial: проставить global_id в траектории + записать
                 # мировые наблюдения в БД (после матчинга)
                 if self.spatial_model is not None:
@@ -208,6 +233,8 @@ class AIWorker(threading.Thread):
                         self._last_unknown.pop(camera_id, None)
                         self.service.drop_camera(camera_id)
                         self.state.drop_camera(camera_id)
+                        if self.action_recognizer is not None:
+                            self.action_recognizer.drop_camera(camera_id)
                 # раз в час — удалить старые фиксации посторонних и глобальные данные
                 if self.unknown_manager is not None and now - self._last_unknown_cleanup > 3600.0:
                     self._last_unknown_cleanup = now
@@ -220,6 +247,10 @@ class AIWorker(threading.Thread):
                         and now - self._last_spatial_cleanup > 3600.0):
                     self._last_spatial_cleanup = now
                     self.spatial_model.cleanup()
+                if (self.action_log is not None
+                        and now - self._last_action_cleanup > 3600.0):
+                    self._last_action_cleanup = now
+                    self.action_log.cleanup()
 
             if not did_work:
                 self._stop.wait(0.05)
@@ -316,6 +347,46 @@ def build_ai_worker(
         logger.error("AI-модели не загрузились (%s) — AI отключён", exc)
         return None
 
+    # распознавание действий (опциональный слой: поза → классификация).
+    # Модель при первом запуске скачивается автоматически; при любой
+    # проблеме слой отключается — остальное работает как раньше.
+    action_recognizer = None
+    action_log = None
+    if settings.action_recognition_enabled and session_factory is not None:
+        pose_path = BASE_DIR / settings.action_model
+        if not pose_path.is_file():
+            from app.ai.actions import download_pose_model
+            download_pose_model(pose_path)
+        if pose_path.is_file():
+            try:
+                from app.ai.actions import ActionRecognizer
+                from app.ai.pose import PoseEstimator
+                from app.services.action_service import ActionLogManager
+
+                pose = PoseEstimator(str(pose_path), providers)
+                action_log = ActionLogManager(
+                    session_factory, settings.action_keep_days
+                )
+                action_recognizer = ActionRecognizer(
+                    pose, action_log.record,
+                    interval=settings.action_interval,
+                    smooth_seconds=settings.action_smooth_seconds,
+                    min_conf=settings.action_pose_confidence,
+                    rest_after=settings.action_rest_after,
+                    log_interval=settings.action_log_interval,
+                )
+                logger.info("Распознавание действий включено (поза: %s)",
+                            pose_path.name)
+            except Exception:
+                logger.exception(
+                    "Распознавание действий не запустилось — система "
+                    "работает без него (см. README)")
+                action_recognizer = None
+                action_log = None
+        else:
+            logger.warning("Pose-модель не найдена: %s — распознавание "
+                           "действий отключено (см. README)", pose_path)
+
     service = RecognitionService(
         detector,
         face_engine,
@@ -331,4 +402,6 @@ def build_ai_worker(
     return AIWorker(manager, service, presence, state,
                     unknown_manager=unknown_manager,
                     global_manager=global_manager,
-                    spatial_model=spatial_model)
+                    spatial_model=spatial_model,
+                    action_recognizer=action_recognizer,
+                    action_log=action_log)

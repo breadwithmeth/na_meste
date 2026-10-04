@@ -36,6 +36,11 @@ class DetectionResult:
     state: str                      # recognized | unknown | detecting
     just_confirmed: bool = False    # подтверждён именно на этом кадре
     global_id: Optional[int] = None # проставляет GlobalIdentityManager (межкамерный слой)
+    # действие человека — проставляет ActionRecognizer (слой распознавания
+    # действий): standing/walking/sitting/lying/eating/phone/working/resting
+    action: Optional[str] = None
+    action_confidence: Optional[float] = None
+    action_since: Optional[float] = None  # epoch сек — начало текущего действия
 
 
 @dataclass

@@ -524,6 +524,44 @@ main > .panel + .panel { margin-top: 20px; }
 .bbox.recognized .bbox-label { color: var(--vid-ok); }
 .bbox.unknown .bbox-label { color: var(--vid-err); }
 
+/* ---------- действия (сидит/работает/отдыхает/…) ---------- */
+.act-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: 9999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface-variant);
+}
+.act-chip.act-working { background: #C6ECD0; color: #1C5E2E; }
+.act-chip.act-sitting { background: #D3E3FD; color: #1B4B8F; }
+.act-chip.act-standing { background: #E7E0EC; color: #49454F; }
+.act-chip.act-walking { background: #FFDCC2; color: #6F3C00; }
+.act-chip.act-resting { background: #EADDFF; color: #4A148C; }
+.act-chip.act-eating { background: #FCE9B8; color: #5C4300; }
+.act-chip.act-phone { background: #BCE8E4; color: #00504A; }
+.act-chip.act-lying { background: #F9DEDC; color: #410E0B; }
+
+/* тот же чип поверх видео: тёмная подложка, яркий текст */
+.bbox .act-chip {
+  position: absolute;
+  top: 4px; left: 4px;
+  background: rgba(20, 18, 24, 0.75);
+  font-weight: 600;
+}
+.bbox .act-chip.act-working { color: var(--vid-ok); }
+.bbox .act-chip.act-sitting { color: #7CB2FF; }
+.bbox .act-chip.act-standing { color: #D8D1DE; }
+.bbox .act-chip.act-walking { color: var(--vid-track); }
+.bbox .act-chip.act-resting { color: #D0BCFF; }
+.bbox .act-chip.act-eating { color: var(--vid-warn); }
+.bbox .act-chip.act-phone { color: #6EE7DE; }
+.bbox .act-chip.act-lying { color: var(--vid-err); }
+
 /* ---------- сотрудники ---------- */
 .employee-list { list-style: none; margin: 0; padding: 0; }
 .employee-row {

@@ -4,7 +4,8 @@
 
 - **Камеры**: подключение к IP-видеорегистраторам **Dahua** по RTSP, живое превью (MJPEG)
 - **AI**: обнаружение людей (YOLO), трекинг (ByteTrack), распознавание лиц
-  сотрудников (InsightFace/ArcFace), сессии присутствия
+  сотрудников (InsightFace/ArcFace), сессии присутствия, **распознавание
+  действий** (сидит / работает / отдыхает / кушает / идёт / лежит / телефон)
 - **Посторонние**: фиксация неопознанных людей (снимок + камера + время);
   каждая фиксация связана с глобальной личностью человека (G#id) —
   на странице «Посторонние» видно, сколько раз этого же человека ловили
@@ -38,6 +39,7 @@ RTSP Reader (фоновый поток, авто-реконнект)
             ├── ByteTrack (треки + grace period)
             ├── Face Detection + Embedding (InsightFace buffalo_l)
             ├── Employee Recognition (косинус, MIN_CONFIRMATIONS)
+            ├── Action Recognition (yolov8n-pose: сидит/работает/отдыхает/…)
             │
             └── Presence Sessions → SQLite
                     │
@@ -108,6 +110,7 @@ onnxruntime-gpu требует CUDA 12/13 + cuDNN 9 DLL. Приложение и
 | Модель | Файл | Назначение | Откуда |
 |---|---|---|---|
 | YOLOv8n | `models/yolov8n.onnx` (~12 МБ) | детекция людей | [ultralytics assets](https://github.com/ultralytics/assets/releases) |
+| YOLOv8n-pose | `models/yolov8n-pose.onnx` (~13 МБ) | поза (17 ключевых точек) для распознавания действий | скачивается автоматически при первом запуске |
 | InsightFace buffalo_l | `models/buffalo_l/*.onnx` (~300 МБ) | детекция лиц (SCRFD det_10g) + эмбеддинги (ArcFace w600k_r50) | скачивается автоматически при первом запуске в `models/buffalo_l/` |
 
 YOLO можно скачать вручную:
@@ -134,11 +137,15 @@ python main.py
 - **Камеры** (дашборд): карточки со статусом и счётчиками — людей / сотрудников /
   неизвестных
 - **Камера**: живое видео + bounding boxes поверх (зелёный — сотрудник с именем
-  и уверенностью, красный — Unknown, жёлтый пунктир — распознаётся)
+  и уверенностью, красный — Unknown, жёлтый пунктир — распознаётся) и чип
+  действия внутри бокса (сидит / работает / отдыхает / …)
 - **Сотрудники**: список, добавление, страница сотрудника с загрузкой фото
   (шаги: поиск лица → эмбеддинг → сохранение; ошибки: нет лица / несколько
   лиц / лицо слишком маленькое; предупреждение о размытости)
 - **Присутствие**: кто сейчас на камерах + история сессий
+- **Действия**: кто что делает прямо сейчас (сидит / работает / отдыхает /
+  кушает / …), сводка длительностей за период и история наблюдений; на
+  странице камеры действие показывается чипом внутри бокса человека
 - **Посторонние**: галерея зафиксированных неопознанных людей (снимок,
   камера, время) + каждое событие уходит в Telegram
 - **Люди**: глобальные личности (межкамерный трекинг) — список с аватарками
@@ -378,6 +385,48 @@ curl -s "localhost:8000/api/spatial/debug/matches?limit=20"
 buffer: `GET /api/spatial/debug/matches`, spatial-оценки также попадают в
 payload событий `person_seen`/`camera_transition`.
 
+## Распознавание действий (Action Recognition)
+
+Слой над трекингом отвечает на вопрос «**что делает человек**»: стоит, идёт,
+сидит, лежит, работает, отдыхает, ест/пьёт, говорит по телефону. Работает
+по всем людям в кадре — и сотрудникам, и посторонним.
+
+```text
+трек человека → кроп → yolov8n-pose (17 ключевых точек COCO)
+    → геометрия скелета → мгновенное действие
+    → голосование по окну ~6 с (гистерезис, как MIN_CONFIRMATIONS у лиц)
+    → итоговое действие → DetectionState (UI/API) + action_observations (БД)
+```
+
+- **Мгновенные действия** — правила по ключевым точкам: лежит (торс ближе
+  к горизонтали), телефон (кисть у уха), ест/пьёт (кисть у рта), сидит
+  (бёдра низко в боксе, колени у бёдер, бокс «квадратный»), идёт (заметное
+  перемещение, торс-длин/сек), стоит (всё остальное);
+- **Производные действия** — по времени: сидит с устойчиво занятыми руками
+  в «рабочей зоне» перед корпусом → **работает**; сидит без активности рук
+  дольше `ACTION_REST_AFTER` → **отдыхает**; рука к лицу в ≥30% кадров
+  (между укусами) → **ест/пьёт**;
+- **Устойчивость**: раз в `ACTION_INTERVAL` секунд на трек (не каждый кадр),
+  смена действия — только когда новое действие строго перевесило старое
+  в окне голосования;
+- **Наблюдения пишутся в БД** при смене действия и далее с троттлингом
+  `ACTION_LOG_INTERVAL` (грубая длительность = число наблюдений × интервал),
+  хранятся `ACTION_KEEP_DAYS`; привязываются к сотруднику и global_id,
+  если известны;
+- **Отказоустойчивость**: модель скачивается автоматически при первом
+  запуске; при любой проблеме слой отключается с предупреждением в логе —
+  детекция/трекинг/лица работают как раньше.
+
+Действия видно: чипом внутри бокса на странице камеры, на странице
+**«Действия»** (сейчас / сводка за смену / история с фильтром), через API
+(`/api/actions/live`, `/api/actions`, `/api/actions/summary`).
+
+Классификация — геометрическая эвристика по позе (не нейросеть действий
+по видеоклипам): она дёшева, интерпретируема и настраивается, но «работает»
+и «отдыхает» — это интерпретация позы рук и времени, а не семантика сцены.
+Для задач типа «сидит за столом» с камерой под потолком точность сидения
+выше, чем у низких ракурсов.
+
 ## Как работает распознавание
 
 1. YOLO находит людей; ByteTrack назначает `track_id` (grace period
@@ -424,6 +473,14 @@ PRESENCE_END_TIMEOUT=30
 FACE_MIN_SIZE=80
 CUDA_DLL_PATH=                # путь к CUDA/cuDNN DLL (пусто = авто-поиск)
 
+# Действия (поза → сидит/работает/отдыхает/кушает/…)
+ACTION_RECOGNITION_ENABLED=true
+ACTION_INTERVAL=1.0           # сек между оценками позы на трек
+ACTION_SMOOTH_SECONDS=6.0     # окно голосования действий
+ACTION_LOG_INTERVAL=10.0      # сек между записями в БД без смены действия
+ACTION_REST_AFTER=15.0        # сек сидения без активности рук → «отдыхает»
+ACTION_KEEP_DAYS=30
+
 # Telegram
 TELEGRAM_BOT_TOKEN=            # токен от @BotFather
 TELEGRAM_CHAT_ID=              # пусто = авто-определение по /start в группе
@@ -467,6 +524,12 @@ curl http://localhost:8000/api/presence/active
 curl "http://localhost:8000/api/presence?limit=100"
 curl http://localhost:8000/api/presence/employee/1
 
+# Действия
+curl http://localhost:8000/api/actions/live             # кто что делает сейчас
+curl "http://localhost:8000/api/actions?limit=50"       # история наблюдений
+curl "http://localhost:8000/api/actions?employee_id=1&action=working"
+curl "http://localhost:8000/api/actions/summary?hours=8" # длительности за смену
+
 # Посторонние
 curl http://localhost:8000/api/unknown?limit=50          # + global_id каждой фиксации
 curl "http://localhost:8000/api/unknown?global_id=184"   # все фиксации конкретного человека
@@ -504,29 +567,35 @@ curl http://localhost:8000/api/cameras/1/tracks
 ├── data/app.db                 # SQLite: cameras, employees, employee_faces,
 │                               # presence_sessions, unknown_events,
 │                               # global_persons, global_observations, global_events,
+│                               # action_observations (сидит/работает/отдыхает/…),
 │                               # spatial_* (2.5D-модель: этажи, объекты, калибровки,
 │                               # граф, мировые наблюдения)
-├── models/                     # yolov8n.onnx, buffalo_l/, osnet_x0_25_msmt17.onnx
+├── models/                     # yolov8n.onnx, yolov8n-pose.onnx, buffalo_l/,
+│                               # osnet_x0_25_msmt17.onnx
 ├── app/
 │   ├── config.py               # настройки (.env)
 │   ├── api/                    # cameras.py, employees.py, presence.py,
-│   │                           # unknown.py, global_persons.py, spatial.py
+│   │                           # unknown.py, global_persons.py, actions.py,
+│   │                           # spatial.py
 │   ├── database/               # database.py, models.py
 │   ├── rtsp/                   # dahua.py, reader.py, manager.py (без изменений AI)
 │   ├── ai/                     # detector.py, tracker.py, face_detector.py,
 │   │                           # face_recognition.py, recognition_service.py,
-│   │                           # reid.py, global_tracker.py, worker.py, providers.py
+│   │                           # reid.py, global_tracker.py, worker.py,
+│   │                           # pose.py, actions.py (распознавание действий),
+│   │                           # providers.py
 │   ├── spatial/                # 2.5D Spatial World Model: geometry (гомография),
 │   │                           # world, trajectory, navigation, matcher, prediction,
 │   │                           # service — опциональный слой над трекингом
 │   ├── services/               # camera_service, employee_service, presence_service,
-│   │                           # unknown_service, telegram_service
+│   │                           # unknown_service, action_service, telegram_service
 │   └── templates/              # index, camera, employees, employee_detail,
-│                               # presence, unknown, global_persons,
+│                               # presence, actions, unknown, global_persons,
 │                               # global_person_detail, spatial_model
 ├── static/                     # css + vanilla js (в т.ч. spatial_*.js для карты)
-└── tests/                      # test_global_persons.py, test_spatial.py:
-                                  # venv/Scripts/python tests/test_spatial.py
+└── tests/                      # test_global_persons.py, test_spatial.py,
+                                  # test_actions.py:
+                                  # venv/Scripts/python tests/test_actions.py
 ```
 
 ## Производительность

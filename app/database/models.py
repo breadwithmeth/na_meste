@@ -171,6 +171,31 @@ class GlobalEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
+class ActionObservation(Base):
+    """Наблюдение действия человека (сидит/работает/отдыхает/…): пишется
+    классификатором действий при смене действия и далее с троттлингом
+    ACTION_LOG_INTERVAL, пока действие продолжается. Грубая оценка
+    длительности действия = число наблюдений × интервал."""
+    __tablename__ = "action_observations"
+    __table_args__ = (
+        Index("ix_action_obs_created", "created_at"),
+        Index("ix_action_obs_emp", "employee_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    camera_id: Mapped[int] = mapped_column(
+        ForeignKey("cameras.id", ondelete="CASCADE"), index=True
+    )
+    track_id: Mapped[int] = mapped_column(Integer)
+    employee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("employees.id", ondelete="SET NULL"), nullable=True
+    )
+    global_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(20))
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 # ------------------------------------------------- 2.5D Spatial World Model
 #
 # Метрическая модель помещения: X — горизонталь, Y — глубина, Z — высота

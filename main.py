@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 from app.ai.face_recognition import EmbeddingStore
 from app.ai.providers import provider_label
 from app.ai.worker import build_ai_worker, build_enroll_engine
+from app.api.actions import router as actions_router
 from app.api.cameras import router as cameras_router
 from app.api.employees import router as employees_router
 from app.api.global_persons import router as global_persons_router
@@ -117,6 +118,7 @@ app.include_router(employees_router)
 app.include_router(presence_router)
 app.include_router(unknown_router)
 app.include_router(global_persons_router)
+app.include_router(actions_router)
 app.include_router(spatial_router)
 
 
@@ -147,6 +149,11 @@ async def employee_page(request: Request, employee_id: int):
 @app.get("/presence", include_in_schema=False)
 async def presence_page(request: Request):
     return templates.TemplateResponse(request, "presence.html", {})
+
+
+@app.get("/actions", include_in_schema=False)
+async def actions_page(request: Request):
+    return templates.TemplateResponse(request, "actions.html", {})
 
 
 @app.get("/unknown", include_in_schema=False)
