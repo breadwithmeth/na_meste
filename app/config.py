@@ -82,6 +82,21 @@ class Settings(BaseSettings):
     w_aspect: float = 0.05
     w_face: float = 0.10
 
+    # --- 2.5D Spatial World Model (метрическая модель помещения) ---
+    # Опциональный слой НАД существующим трекингом: foot point → гомография →
+    # мировые координаты → spatial/temporal/direction-оценки в матчинге.
+    # При включении действует профиль весов из ТЗ: final = w_reid*reid
+    # + w_spatial*spatial + w_temporal*temporal(физическая) + w_direction*direction
+    # (topology/aspect/face — веса fallback-режима без spatial-данных).
+    spatial_model_enabled: bool = False
+    spatial_obs_interval: float = 1.0     # сек между записями spatial_observations на трек
+    spatial_trajectory_len: int = 30      # точек в траектории трека (~6 с при 5 FPS)
+    spatial_ema_alpha: float = 0.4        # сглаживание позиции (EMA)
+    spatial_max_speed: float = 2.0        # м/с — потолок скорости человека для проверок времени
+    spatial_keep_days: int = 30           # хранение spatial_observations
+    w_spatial: float = 0.25               # вес spatial-оценки в матчинге
+    w_direction: float = 0.10             # вес направления движения
+
     def ai_camera_ids(self) -> set[int] | None:
         """Идентификаторы камер для AI; None = все."""
         raw = self.ai_cameras.strip()

@@ -1,4 +1,4 @@
-// PALEVO — глобальные личности (межкамерный трекинг): список.
+// PALEVO — глобальные личности (межкамерный трекинг): список с фильтрами.
 
 const $ = (id) => document.getElementById(id);
 
@@ -9,10 +9,36 @@ function fmtDateTime(iso) {
   });
 }
 
+const state = { search: '', status: '', camera: '' };
+let searchTimer = null;
+
+async function loadCameras() {
+  try {
+    const res = await fetch('/api/cameras');
+    if (!res.ok) return;
+    const cameras = await res.json();
+    const select = $('f-camera');
+    for (const cam of cameras) {
+      const opt = document.createElement('option');
+      opt.value = cam.id;
+      opt.textContent = cam.name || `камера #${cam.id}`;
+      select.appendChild(opt);
+    }
+  } catch (e) { /* без списка камер фильтр просто не заполнится */ }
+}
+
+function apiUrl() {
+  const params = new URLSearchParams({ limit: '200' });
+  if (state.search) params.set('search', state.search);
+  if (state.status) params.set('status', state.status);
+  if (state.camera) params.set('camera_id', state.camera);
+  return `/api/global-persons?${params}`;
+}
+
 async function load() {
   let persons;
   try {
-    const res = await fetch('/api/global-persons?limit=200');
+    const res = await fetch(apiUrl());
     if (!res.ok) throw new Error();
     persons = await res.json();
   } catch (e) {
@@ -30,6 +56,19 @@ async function load() {
   for (const p of persons) {
     const tr = document.createElement('tr');
 
+    const photo = document.createElement('td');
+    if (p.has_photo) {
+      const img = document.createElement('img');
+      img.src = `/api/global-persons/${p.global_id}/photo`;
+      img.className = 'gp-avatar';
+      img.loading = 'lazy';
+      img.alt = '';
+      img.onerror = () => { img.remove(); };
+      photo.appendChild(img);
+    } else {
+      photo.textContent = '—';
+    }
+
     const idTd = document.createElement('td');
     const link = document.createElement('a');
     link.href = `/global/${p.global_id}`;
@@ -44,13 +83,31 @@ async function load() {
     status.appendChild(badge);
 
     const emp = document.createElement('td');
-    emp.textContent = p.employee_name || (p.employee_id ? `#${p.employee_id}` : '—');
+    if (p.employee_id) {
+      const empLink = document.createElement('a');
+      empLink.href = `/employees/${p.employee_id}`;
+      empLink.textContent = p.employee_name || `#${p.employee_id}`;
+      emp.appendChild(empLink);
+    } else {
+      emp.textContent = '—';
+    }
 
     const cam = document.createElement('td');
     cam.textContent = p.last_camera_name || (p.last_camera_id ? `#${p.last_camera_id}` : '—');
 
     const count = document.createElement('td');
     count.textContent = String(p.observations_count);
+
+    const unknown = document.createElement('td');
+    if (p.unknown_events_count > 0) {
+      const uLink = document.createElement('a');
+      uLink.href = `/unknown?global_id=${p.global_id}`;
+      uLink.textContent = String(p.unknown_events_count);
+      uLink.title = 'Фиксации постороннего — показать';
+      unknown.appendChild(uLink);
+    } else {
+      unknown.textContent = '—';
+    }
 
     const seen = document.createElement('td');
     seen.textContent = fmtDateTime(p.last_seen_at);
@@ -62,10 +119,18 @@ async function load() {
     openLink.textContent = 'Открыть';
     open.appendChild(openLink);
 
-    tr.append(idTd, status, emp, cam, count, seen, open);
+    tr.append(photo, idTd, status, emp, cam, count, unknown, seen, open);
     tbody.appendChild(tr);
   }
 }
 
+$('f-search').addEventListener('input', (e) => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { state.search = e.target.value.trim(); load(); }, 300);
+});
+$('f-status').addEventListener('change', (e) => { state.status = e.target.value; load(); });
+$('f-camera').addEventListener('change', (e) => { state.camera = e.target.value; load(); });
+
+loadCameras();
 load();
 setInterval(load, 5000);

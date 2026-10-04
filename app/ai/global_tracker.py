@@ -7,13 +7,25 @@ composite score:
     final = w_reid*reid + w_temporal*temporal + w_topology*topology
           + w_aspect*aspect + w_face*face
 
+При включённой 2.5D-модели (spatial=…) и наличии spatial-данных действует
+профиль ТЗ §9: final = w_reid*reid + w_spatial*spatial +
+w_temporal*temporal(физическая осуществимость) + w_direction*direction.
+Spatial-модель отвечает «мог ли человек физически оказаться здесь?» и
+может наложить veto (невозможное расстояние/время, другой этаж без
+лестницы) — Re-ID при этом не единственный источник решения.
+
 Ложное слияние опаснее лишнего global_id (ТЗ §10): при неоднозначности
 (два кандидата с близкими оценками) илиscore ниже порога создаётся НОВЫЙ
 global_id, а сомнительный матч записывается в payload для анализа.
 
-Состояния identity: NEW → ACTIVE → LOST (по таймауту без наблюдений).
-Связывание: PROVISIONAL_MATCH при первом матче, CONFIRMED_MATCH после
-повторного совпадения эмбеддинга с той же identity.
+Состояния identity: NEW → ACTIVE → LOST (по таймауту без наблюдений; в
+global_events пишется событие person_lost). Связывание: PROVISIONAL_MATCH
+при первом матче, CONFIRMED_MATCH после повторного совпадения эмбеддинга
+с той же identity.
+
+Дробление identity (лишний global_id) безопаснее ложного слияния, поэтому
+фрагменты накапливаются — их объединяет merge() (вызывается из API
+/api/global-persons/{id}/merge/{source}): БД-часть в API, память — здесь.
 
 Ошибка Re-ID/БД не должна ронять pipeline: воркер вызывает process()
 в try/except; здесь дополнительно защищены записи в БД.
@@ -44,6 +56,7 @@ SNAPSHOT_MAX_HEIGHT = 400
 MIN_CROP_HEIGHT = 48      # меньше — appearance-эмбеддинг ненадёжен
 SWEEP_INTERVAL = 2.0      # сек между подчистками привязок
 SAME_CAMERA_OVERLAP = 2.0 # сек: identity «занята» другим треком той же камеры
+DB_SYNC_INTERVAL = 10.0   # сек между записями global_persons активной identity
 
 
 def _dbg(msg: str, *args) -> None:
@@ -133,6 +146,7 @@ class GlobalIdentity:
     status: str = "ACTIVE"                             # NEW/ACTIVE/LOST
     aspect: float = 0.0                                # EMA пропорций фигуры
     embeddings: deque = field(default_factory=deque)   # [(vec, mono_ts, camera)]
+    last_db_sync: float = 0.0                          # monotonic, троттлинг записей
 
 
 @dataclass
@@ -151,11 +165,15 @@ class TrackBinding:
 
 class GlobalIdentityManager:
     def __init__(self, session_factory, reid: PersonReID,
-                 topology: Optional[CameraTopology] = None, notifier=None):
+                 topology: Optional[CameraTopology] = None, notifier=None,
+                 spatial=None):
         self._session_factory = session_factory
         self.reid = reid
         self.topology = topology
         self.notifier = notifier
+        # 2.5D Spatial World Model (опционально): spatial/temporal/direction
+        # оценки + veto физически невозможных переходов (ТЗ §9-§12)
+        self.spatial = spatial
         self._identities: dict[int, GlobalIdentity] = {}
         self._bindings: dict[tuple[int, int], TrackBinding] = {}
         self._next_id = 1
@@ -208,10 +226,20 @@ class GlobalIdentityManager:
         for ident in list(self._identities.values()):
             if now - ident.last_seen > ttl:
                 with self._lock:
+                    self._identities.pop(ident.global_id, None)
                     if ident.status != "LOST":
                         ident.status = "LOST"
                         self._db_update_person(ident)
-                    self._identities.pop(ident.global_id, None)
+                        self._db_event(
+                            ident.global_id, "person_lost",
+                            ident.last_camera, ident.last_track_id,
+                            {
+                                "last_camera": ident.last_camera,
+                                "duration_seconds": round(now - ident.created_at, 1),
+                                "gallery_size": len(ident.embeddings),
+                                "employee_id": ident.employee_id,
+                            },
+                        )
 
     def camera_tracks(self, camera_id: int) -> list[dict]:
         """Активные локальные треки камеры с global_id (для API/UI)."""
@@ -260,6 +288,38 @@ class GlobalIdentityManager:
         except Exception:
             logger.exception("Global: ошибка очистки старых данных")
 
+    def merge(self, target_id: int, source_id: int) -> None:
+        """Объединить личности в ПАМЯТИ (БД-часть делает API перед вызовом):
+        галерея эмбеддингов source вливается в target, живые привязки треков
+        переключаются на target, source исчезает из памяти."""
+        with self._lock:
+            source = self._identities.pop(source_id, None)
+            target = self._identities.get(target_id)
+            if source is not None:
+                if target is None:
+                    # target не в памяти — переименовываем source: его записи
+                    # уже слиты в БД, живые привязки должны указывать на target
+                    source.global_id = target_id
+                    self._identities[target_id] = source
+                else:
+                    target.embeddings.extend(source.embeddings)
+                    while len(target.embeddings) > settings.global_history_len:
+                        target.embeddings.popleft()
+                    if target.employee_id is None:
+                        target.employee_id = source.employee_id
+                    if source.last_seen > target.last_seen:
+                        target.last_seen = source.last_seen
+                        target.last_seen_wall = source.last_seen_wall
+                        target.last_camera = source.last_camera
+                        target.last_track_id = source.last_track_id
+            # привязки могли остаться на source даже если identity уже ушла
+            # из памяти (sweep) — переключаем в любом случае
+            for binding in self._bindings.values():
+                if binding.global_id == source_id:
+                    binding.global_id = target_id
+        logger.info("Global: merge global_id=%d вливается в global_id=%d",
+                    source_id, target_id)
+
     # ------------------------------------------------------------- матчинг
 
     def _bind_new_track(self, camera_id, det, frame, w, h, now) -> None:
@@ -279,21 +339,42 @@ class GlobalIdentityManager:
                 global_id=identity.global_id, created_at=now, last_seen=now,
                 last_embed_at=now,
             )
-        det.global_id = identity.global_id
-
-        snapshot = self._snapshot_jpeg(crop)
-        # сначала создать/обновить global_persons (FK для событий и наблюдений)
-        self._db_update_person(identity)
-        self._record_event(identity, camera_id, det, scores, snapshot)
-        with self._lock:
-            # обновляем камеру ПОСЛЕ записи события, иначе потеряем from_camera
+            # прежняя камера нужна событию camera_transition; саму identity
+            # обновляем ДО записи в БД, чтобы global_persons не отставал на шаг
+            previous_camera = identity.last_camera
+            previous_track = identity.last_track_id
             identity.last_camera = camera_id
             identity.last_track_id = det.track_id
             self._update_aspect(identity, det)
+        det.global_id = identity.global_id
+
+        snapshot = self._snapshot_jpeg(crop)
+        # создать/обновить global_persons (FK для событий и наблюдений) — уже
+        # с актуальной камерой и временем
+        self._db_update_person(identity)
+        identity.last_db_sync = now
+        self._record_event(identity, camera_id, det, scores, snapshot,
+                           previous_camera=previous_camera,
+                           previous_track=previous_track)
         self._persist_observation(identity, camera_id, det, embedding, snapshot)
         _dbg("[IDENTITY] camera=%d track=%d → global_id=%d (%s)",
              camera_id, det.track_id, identity.global_id,
              "match" if scores.get("matched", False) else "new")
+        # решение в debug ring buffer 2.5D-модели (ТЗ §19): оценки, вердикт
+        # и причины spatial-отказов — доступно в /api/spatial/debug/matches
+        if self.spatial is not None:
+            try:
+                self.spatial.record_match_decision({
+                    "camera_id": camera_id,
+                    "track_id": det.track_id,
+                    "global_id": identity.global_id,
+                    "previous_camera": previous_camera,
+                    "decision": "MATCHED" if scores.get("matched", False)
+                                else "NEW_IDENTITY",
+                    "scores": scores,
+                })
+            except Exception:
+                logger.exception("Global: не записать spatial-решение матча")
 
     def _refresh_embedding(self, binding: TrackBinding, camera_id, det,
                            frame, w, h, now) -> None:
@@ -305,15 +386,18 @@ class GlobalIdentityManager:
         embedding = self.reid.embed([crop])[0]
         binding.last_embed_at = now
 
+        employee_changed = False
         with self._lock:
             identity = self._identities.get(binding.global_id)
             if identity is None:
                 return
             identity.last_seen = now
+            identity.last_seen_wall = utcnow()
             identity.last_camera = camera_id
             identity.last_track_id = det.track_id
             self._update_aspect(identity, det)
-            if det.employee_id:
+            if det.employee_id and identity.employee_id != det.employee_id:
+                employee_changed = True       # сотрудник распознан — в БД сразу
                 identity.employee_id = det.employee_id
             self._push_embedding(identity, embedding, now, camera_id)
             best_gid, best_sim, _scores = self._best_candidate(
@@ -339,6 +423,11 @@ class GlobalIdentityManager:
                     {"bound_global_id": binding.global_id,
                      "better_global_id": best_gid, "better_similarity": round(best_sim, 3)},
                 )
+        # троттлинг: не чаще DB_SYNC_INTERVAL (кроме смены сотрудника —
+        # иначе global_persons.employee_id в БД отстанет от реальности)
+        if employee_changed or now - identity.last_db_sync >= DB_SYNC_INTERVAL:
+            identity.last_db_sync = now
+            self._db_update_person(identity)
 
     def _match_or_create(self, camera_id, det, embedding, now
                          ) -> tuple[GlobalIdentity, dict]:
@@ -348,6 +437,7 @@ class GlobalIdentityManager:
             with self._lock:
                 identity = self._identities[best_gid]
                 identity.last_seen = now
+                identity.last_seen_wall = utcnow()
                 # last_camera/last_track_id обновит вызывающий код ПОСЛЕ
                 # записи события camera_transition (нужен from_camera)
                 if det.employee_id:
@@ -381,6 +471,7 @@ class GlobalIdentityManager:
         одновременное присутствие на одной камере.
         """
         ranked: list[tuple[float, float, int, dict]] = []
+        spatial_rejects: list[dict] = []   # причины spatial-отказов (§19)
         with self._lock:
             identities = list(self._identities.values())
         for identity in identities:
@@ -416,36 +507,84 @@ class GlobalIdentityManager:
                      identity.global_id, identity.last_camera, camera_id, dt)
                 continue
 
-            temporal_score = max(0.0, 1.0 - dt / settings.global_gallery_ttl)
-            aspect_score = self._aspect_score(det, identity)
-            face_score = self._face_score(det, identity)
+            # 2.5D-модель: «мог ли человек физически оказаться здесь?»
+            # veto — невозможное расстояние/время или другой этаж без
+            # stairs/elevator; иначе spatial/temporal/direction оценки
+            spatial_eval = None
+            if self.spatial is not None:
+                spatial_eval = self.spatial.evaluate(
+                    identity.global_id, camera_id, det.track_id, now)
+                if spatial_eval is not None and spatial_eval.veto:
+                    _dbg("[MATCH] veto spatial: gid=%d (%s)",
+                         identity.global_id, spatial_eval.reason)
+                    spatial_rejects.append({
+                        "global_id": identity.global_id,
+                        "reid": round(float(reid_sim), 3),
+                        "reason": spatial_eval.reason,
+                    })
+                    continue
 
-            final = (
-                settings.w_reid * reid_sim
-                + settings.w_temporal * temporal_score
-                + settings.w_topology * topology_score
-                + settings.w_aspect * aspect_score
-                + settings.w_face * face_score
-            )
-            scores = {
-                "reid": round(float(reid_sim), 3),
-                "temporal": round(temporal_score, 3),
-                "topology": round(topology_score, 3),
-                "aspect": round(aspect_score, 3),
-                "face": round(face_score, 3),
-                "final": round(final, 3),
-                "gap_seconds": round(dt, 1),
-            }
-            _dbg("[MATCH] track=%d candidate_global_id=%d similarity=%.3f "
-                 "temporal_score=%.3f topology_score=%.3f final_score=%.3f",
-                 det.track_id, identity.global_id, reid_sim,
-                 temporal_score, topology_score, final)
+            if spatial_eval is not None and spatial_eval.available:
+                # профиль ТЗ §9: reid + spatial + temporal(физическая
+                # осуществимость) + direction; topology/aspect/face —
+                # веса fallback-режима без spatial-данных
+                temporal_score = spatial_eval.temporal
+                final = (
+                    settings.w_reid * reid_sim
+                    + settings.w_spatial * spatial_eval.spatial
+                    + settings.w_temporal * temporal_score
+                    + settings.w_direction * spatial_eval.direction
+                )
+                scores = {
+                    "reid": round(float(reid_sim), 3),
+                    "spatial": round(spatial_eval.spatial, 3),
+                    "temporal": round(temporal_score, 3),
+                    "direction": round(spatial_eval.direction, 3),
+                    "final": round(final, 3),
+                    "gap_seconds": round(dt, 1),
+                    "spatial_details": spatial_eval.details,
+                }
+                if spatial_eval.reason:
+                    scores["spatial_note"] = spatial_eval.reason
+                _dbg("[MATCH] track=%d candidate_global_id=%d similarity=%.3f "
+                     "spatial=%.3f temporal=%.3f direction=%.3f final=%.3f",
+                     det.track_id, identity.global_id, reid_sim,
+                     spatial_eval.spatial, temporal_score,
+                     spatial_eval.direction, final)
+            else:
+                temporal_score = max(0.0, 1.0 - dt / settings.global_gallery_ttl)
+                aspect_score = self._aspect_score(det, identity)
+                face_score = self._face_score(det, identity)
+
+                final = (
+                    settings.w_reid * reid_sim
+                    + settings.w_temporal * temporal_score
+                    + settings.w_topology * topology_score
+                    + settings.w_aspect * aspect_score
+                    + settings.w_face * face_score
+                )
+                scores = {
+                    "reid": round(float(reid_sim), 3),
+                    "temporal": round(temporal_score, 3),
+                    "topology": round(topology_score, 3),
+                    "aspect": round(aspect_score, 3),
+                    "face": round(face_score, 3),
+                    "final": round(final, 3),
+                    "gap_seconds": round(dt, 1),
+                }
+                _dbg("[MATCH] track=%d candidate_global_id=%d similarity=%.3f "
+                     "temporal_score=%.3f topology_score=%.3f final_score=%.3f",
+                     det.track_id, identity.global_id, reid_sim,
+                     temporal_score, topology_score, final)
             ranked.append((final, reid_sim, identity.global_id, scores))
 
         if not ranked:
-            return None, 0.0, {}
+            return None, 0.0, {"spatial_rejects": spatial_rejects} \
+                if spatial_rejects else {}
         ranked.sort(key=lambda r: -r[0])
         final, sim, gid, scores = ranked[0]
+        if spatial_rejects:
+            scores = {**scores, "spatial_rejects": spatial_rejects}
         # неоднозначность: два кандидата с близкими оценками — не сливаем (ТЗ §10)
         if len(ranked) > 1 and (final - ranked[1][0]) < settings.global_match_margin:
             logger.info(
@@ -535,9 +674,9 @@ class GlobalIdentityManager:
             logger.exception("Global: не удалось записать наблюдение")
 
     def _record_event(self, identity: GlobalIdentity, camera_id, det,
-                      scores: dict, snapshot: bytes = b""):
+                      scores: dict, snapshot: bytes = b"",
+                      previous_camera=None, previous_track=None) -> None:
         """person_seen + camera_transition при смене камеры + уведомления TG."""
-        previous_camera = identity.last_camera
         payload = dict(scores)
         payload["similarity"] = scores.get("reid")
         payload["confidence"] = scores.get("final")
@@ -551,8 +690,8 @@ class GlobalIdentityManager:
                 {
                     "from_camera": previous_camera,
                     "to_camera": camera_id,
-                    "from_track_id": identity.last_track_id
-                    if identity.last_track_id != det.track_id else None,
+                    "from_track_id": previous_track
+                    if previous_track != det.track_id else None,
                     "to_track_id": det.track_id,
                     "similarity": scores.get("reid"),
                     "confidence": scores.get("final"),
@@ -565,7 +704,6 @@ class GlobalIdentityManager:
             )
             self._notify_transition(identity, previous_camera, camera_id,
                                     scores, snapshot)
-        return previous_camera
 
     # ------------------------------------------------------------ Telegram
 
@@ -685,6 +823,7 @@ class GlobalIdentityManager:
                         last_track_id=person.last_track_id,
                         employee_id=person.employee_id,
                         status="LOST",  # в памяти до первого нового наблюдения
+                        last_db_sync=time.monotonic(),
                     )
                     for o in reversed(obs):
                         vec = np.frombuffer(o.embedding, dtype=np.float32)

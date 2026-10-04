@@ -4,6 +4,10 @@ const gridEl = document.getElementById('unknown-grid');
 const emptyEl = document.getElementById('empty');
 const summaryEl = document.getElementById('summary');
 
+// ?global_id=184 — показать фиксации одной глобальной личности
+// (переход со страницы человека и обратно)
+const filterGid = new URLSearchParams(window.location.search).get('global_id');
+
 function fmtDateTime(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('ru-RU', {
@@ -14,7 +18,10 @@ function fmtDateTime(iso) {
 async function load() {
   let events;
   try {
-    const res = await fetch('/api/unknown?limit=200');
+    const url = filterGid
+      ? `/api/unknown?limit=500&global_id=${encodeURIComponent(filterGid)}`
+      : '/api/unknown?limit=200';
+    const res = await fetch(url);
     if (!res.ok) throw new Error();
     events = await res.json();
   } catch (e) {
@@ -24,7 +31,19 @@ async function load() {
 
   gridEl.innerHTML = '';
   emptyEl.hidden = events.length > 0;
-  summaryEl.textContent = events.length ? `зафиксировано: ${events.length}` : '';
+  if (filterGid) {
+    const back = document.createElement('a');
+    back.href = `/global/${filterGid}`;
+    back.textContent = `← G#${filterGid}`;
+    back.className = 'gid-badge';
+    back.title = 'Вернуться к личности';
+    summaryEl.innerHTML = '';
+    summaryEl.append(`фиксации G#${filterGid}: ${events.length} · `, back,
+      ' · ', Object.assign(document.createElement('a'),
+        { href: '/unknown', textContent: 'показать всех' }));
+  } else {
+    summaryEl.textContent = events.length ? `зафиксировано: ${events.length}` : '';
+  }
 
   for (const ev of events) {
     const cell = document.createElement('div');

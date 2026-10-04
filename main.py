@@ -21,6 +21,7 @@ from app.api.cameras import router as cameras_router
 from app.api.employees import router as employees_router
 from app.api.global_persons import router as global_persons_router
 from app.api.presence import router as presence_router
+from app.api.spatial import router as spatial_router
 from app.api.unknown import router as unknown_router
 from app.config import BASE_DIR, settings
 from app.database.database import SessionLocal, init_db
@@ -116,6 +117,7 @@ app.include_router(employees_router)
 app.include_router(presence_router)
 app.include_router(unknown_router)
 app.include_router(global_persons_router)
+app.include_router(spatial_router)
 
 
 @app.get("/", include_in_schema=False)
@@ -162,6 +164,11 @@ async def global_person_page(request: Request, global_id: int):
     return templates.TemplateResponse(
         request, "global_person_detail.html", {"global_id": global_id}
     )
+
+
+@app.get("/spatial-model", include_in_schema=False)
+async def spatial_model_page(request: Request):
+    return templates.TemplateResponse(request, "spatial_model.html", {})
 
 
 if __name__ == "__main__":

@@ -88,6 +88,7 @@ class AIWorker(threading.Thread):
         detection_state: DetectionState,
         unknown_manager=None,
         global_manager=None,
+        spatial_model=None,
     ):
         super().__init__(name="ai-worker", daemon=True)
         self.manager = manager
@@ -96,6 +97,7 @@ class AIWorker(threading.Thread):
         self.state = detection_state
         self.unknown_manager = unknown_manager
         self.global_manager = global_manager
+        self.spatial_model = spatial_model
         self._stop = threading.Event()
         self._last_seq: dict[int, int] = {}
         self._last_ts: dict[int, float] = {}
@@ -103,6 +105,7 @@ class AIWorker(threading.Thread):
         self._last_unknown: dict[int, float] = {}
         self._last_unknown_cleanup = 0.0
         self._last_global_cleanup = 0.0
+        self._last_spatial_cleanup = 0.0
 
     def stop(self, timeout: float = 3.0) -> None:
         self._stop.set()
@@ -141,6 +144,18 @@ class AIWorker(threading.Thread):
                     logger.exception("Camera %d: ошибка AI-обработки кадра", camera_id)
                     continue
 
+                # 2.5D-модель: спроецировать foot points на пол ДО матчинга,
+                # чтобы у GlobalIdentityManager были координаты нового трека
+                # уже в его первом кадре. Ошибки слоя не роняют pipeline.
+                if self.spatial_model is not None:
+                    try:
+                        self.spatial_model.process(
+                            camera_id, outcome, frame.shape[:2], now)
+                    except Exception:
+                        logger.exception(
+                            "Camera %d: ошибка spatial-проекции — "
+                            "трекинг продолжается", camera_id)
+
                 # межкамерный трекинг: Re-ID + глобальные identity.
                 # Ошибки этого слоя не должны останавливать pipeline —
                 # detection/tracking/presence продолжают работать.
@@ -152,6 +167,15 @@ class AIWorker(threading.Thread):
                             "Camera %d: ошибка глобального трекинга — "
                             "локальный трекинг продолжается", camera_id,
                         )
+
+                # spatial: проставить global_id в траектории + записать
+                # мировые наблюдения в БД (после матчинга)
+                if self.spatial_model is not None:
+                    try:
+                        self.spatial_model.commit(camera_id, outcome, now)
+                    except Exception:
+                        logger.exception(
+                            "Camera %d: ошибка spatial-commit", camera_id)
 
                 self.state.update(camera_id, outcome.detections)
                 for _track_id, employee_id, confidence in outcome.new_recognitions:
@@ -192,6 +216,10 @@ class AIWorker(threading.Thread):
                         and now - self._last_global_cleanup > 3600.0):
                     self._last_global_cleanup = now
                     self.global_manager.cleanup()
+                if (self.spatial_model is not None
+                        and now - self._last_spatial_cleanup > 3600.0):
+                    self._last_spatial_cleanup = now
+                    self.spatial_model.cleanup()
 
             if not did_work:
                 self._stop.wait(0.05)
@@ -237,6 +265,20 @@ def build_ai_worker(
         logger.error("YOLO-модель не найдена: %s — AI отключён (см. README)", yolo_path)
         return None
 
+    # 2.5D Spatial World Model (опциональный слой поверх трекинга):
+    # мировые координаты + spatial-оценки в матчинге. Строится ДО
+    # global_manager: скорер подключается к GlobalIdentityManager.
+    spatial_model = None
+    if settings.spatial_model_enabled and session_factory is not None:
+        try:
+            from app.spatial.service import SpatialWorldModel
+            spatial_model = SpatialWorldModel.load(session_factory)
+        except Exception:
+            logger.exception(
+                "2.5D Spatial World Model не загрузился — система работает "
+                "без него (см. /spatial-model)")
+            spatial_model = None
+
     # межкамерный трекинг (опциональный слой, не ломает остальное)
     global_manager = None
     if settings.multi_camera_tracking_enabled and session_factory is not None:
@@ -249,7 +291,8 @@ def build_ai_worker(
                 reid = PersonReID(str(reid_path), providers)
                 topology = CameraTopology.load(settings.topology_config)
                 global_manager = GlobalIdentityManager(
-                    session_factory, reid, topology, notifier=notifier
+                    session_factory, reid, topology, notifier=notifier,
+                    spatial=spatial_model,
                 )
                 logger.info("Межкамерный трекинг включён (Re-ID: %s)",
                             reid_path.name)
@@ -286,4 +329,5 @@ def build_ai_worker(
     logger.info("AI Provider: %s", provider_label(detector.session.get_providers()))
     return AIWorker(manager, service, presence, state,
                     unknown_manager=unknown_manager,
-                    global_manager=global_manager)
+                    global_manager=global_manager,
+                    spatial_model=spatial_model)

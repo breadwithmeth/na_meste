@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Пространственная модель — PALEVO</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="dot"></span> PALEVO</a>
+    <nav class="nav">
+      <a href="/" class="nav-link">Камеры</a>
+      <a href="/employees" class="nav-link">Сотрудники</a>
+      <a href="/presence" class="nav-link">Присутствие</a>
+      <a href="/unknown" class="nav-link">Посторонние</a>
+      <a href="/global" class="nav-link">Люди</a>
+      <a href="/spatial-model" class="nav-link active">Пространство</a>
+    </nav>
+    <span id="sp-status" class="muted small"></span>
+  </header>
+
+  <main class="container wide sp-container">
+    <section class="panel">
+      <div class="sp-toolbar">
+        <div class="sp-modes">
+          <button class="btn sp-mode-btn active" data-mode="map">Карта</button>
+          <button class="btn sp-mode-btn" data-mode="editor">Редактор</button>
+          <button class="btn sp-mode-btn" data-mode="calibration">Калибровка</button>
+          <button class="btn sp-mode-btn" data-mode="debug">Отладка</button>
+        </div>
+        <div class="sp-view-controls">
+          <select id="sp-floor" title="Этаж"></select>
+          <label class="sp-check" title="Объёмный вид: этажи по высоте, стены как параллелограммы">
+            <input type="checkbox" id="sp-iso"> Изометрия
+          </label>
+          <button class="btn ghost" id="sp-fit" title="Вписать этаж в окно">Вписать</button>
+          <span class="muted small" id="sp-hint"></span>
+        </div>
+      </div>
+    </section>
+
+    <div class="sp-layout">
+      <section class="panel sp-canvas-panel">
+        <canvas id="sp-map"></canvas>
+        <div class="sp-map-badge muted small" id="sp-map-badge"></div>
+        <div id="sp-empty" class="empty" hidden>
+          Модель помещения пуста. Перейдите в «Редактор», создайте этаж
+          и разместите стены, двери и камеры.
+        </div>
+      </section>
+      <aside class="panel sp-side" id="sp-side"></aside>
+    </div>
+  </main>
+
+  <script src="/static/js/spatial_map.js"></script>
+  <script src="/static/js/spatial_editor.js"></script>
+  <script src="/static/js/spatial_calibration.js"></script>
+  <script src="/static/js/spatial_model.js"></script>
+</body>
+</html>

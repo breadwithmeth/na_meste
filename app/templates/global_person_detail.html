@@ -15,19 +15,44 @@
       <a href="/presence" class="nav-link">Присутствие</a>
       <a href="/unknown" class="nav-link">Посторонние</a>
       <a href="/global" class="nav-link active">Люди</a>
+      <a href="/spatial-model" class="nav-link">Пространство</a>
     </nav>
     <span id="gp-title" class="muted">Global</span>
   </header>
 
   <main class="container wide">
-    <!-- Траектория -->
+    <!-- Шапка личности -->
     <section class="panel">
+      <div class="gp-head">
+        <img id="gp-avatar" class="gp-avatar-lg" alt="" hidden>
+        <div class="gp-head-info">
+          <h2 id="gp-name" style="margin:0 0 6px">G#…</h2>
+          <div id="gp-meta" class="muted small"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Траектория -->
+    <section class="panel" style="margin-top:16px">
       <div class="panel-head"><h2>Траектория</h2></div>
       <div id="trajectory" class="trajectory"></div>
     </section>
 
+    <!-- Объединение личностей -->
+    <section class="panel" style="margin-top:16px">
+      <div class="panel-head">
+        <h2>Объединение</h2>
+        <span class="muted small">Если один и тот же человек получил два global_id — влейте лишний сюда</span>
+      </div>
+      <form id="merge-form" class="merge-form">
+        <input type="number" id="merge-source" min="1" placeholder="G#id лишней личности" required>
+        <button type="submit" class="btn">Влить в эту личность</button>
+        <span id="merge-status" class="muted small"></span>
+      </form>
+    </section>
+
     <!-- Таймлайн -->
-    <section class="panel">
+    <section class="panel" style="margin-top:16px">
       <div class="panel-head">
         <h2>Таймлайн</h2>
         <span class="muted small">Наблюдения (со снимками) и события — переходы между камерами</span>

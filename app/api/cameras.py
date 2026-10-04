@@ -11,6 +11,7 @@
     POST   /api/cameras/{id}/test        проверить сохранённую камеру
     GET    /api/cameras/{id}/status      runtime-статус потока
     GET    /api/cameras/{id}/stream      MJPEG (multipart/x-mixed-replace)
+    GET    /api/cameras/{id}/snapshot    один JPEG-кадр (калибровка)
 """
 import logging
 import time
@@ -19,7 +20,7 @@ from typing import Optional
 import cv2
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -314,3 +315,24 @@ def api_camera_stream(
             "Pragma": "no-cache",
         },
     )
+
+
+@router.get("/{camera_id}/snapshot")
+def api_camera_snapshot(
+    camera_id: int,
+    db: Session = Depends(get_db),
+    manager: ReaderManager = Depends(get_manager),
+):
+    """Один статичный JPEG-кадр из буфера ридера — для калибровки камеры
+    на /spatial-model (кликать точки по кадру)."""
+    camera = _camera_or_404(db, camera_id)
+    reader = manager.get(camera.id)
+    frame = None
+    if reader is not None and reader.is_alive():
+        item = reader.buffer.latest()
+        if item is not None:
+            frame = item[1]
+    if frame is None:
+        raise HTTPException(503, "Кадр недоступен: камера не подключена")
+    return Response(content=_encode_jpeg(frame), media_type="image/jpeg",
+                    headers={"Cache-Control": "no-cache, no-store"})

@@ -169,3 +169,153 @@ class GlobalEvent(Base):
     track_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     payload: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+# ------------------------------------------------- 2.5D Spatial World Model
+#
+# Метрическая модель помещения: X — горизонталь, Y — глубина, Z — высота
+# (Z используется для этажей, высоты камер и стен). Все координаты в метрах.
+
+
+class SpatialFloor(Base):
+    """Этаж: z — высота пола. floorplan — подложка планировки (JPEG/PNG),
+    floorplan_scale — метров на пиксель подложки, floorplan_origin — мировые
+    координаты её левого верхнего угла (JSON [x, y])."""
+    __tablename__ = "spatial_floors"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    z: Mapped[float] = mapped_column(Float, default=0.0)
+    floorplan: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    floorplan_scale: Mapped[float | None] = mapped_column(Float, nullable=True)
+    floorplan_origin: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class SpatialFeature(Base):
+    """Геометрия помещения в метрах: стены, двери, лестницы, лифты, зоны.
+
+    Формат geometry (JSON) зависит от типа:
+      wall/door/stairs/elevator — отрезок: {"start": [x,y], "end": [x,y],
+                                           "height": 3.2} (height — у стен);
+      entrance/exit/zone/restricted_zone/corridor/room — полигон:
+                                           {"points": [[x,y], ...]}.
+    """
+    __tablename__ = "spatial_features"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    floor_id: Mapped[int] = mapped_column(
+        ForeignKey("spatial_floors.id", ondelete="CASCADE"), index=True
+    )
+    ftype: Mapped[str] = mapped_column(String(20))
+    name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    geometry: Mapped[str] = mapped_column(String(4000))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class SpatialCameraSetup(Base):
+    """Пространственное положение камеры (1:1 с cameras): позиция в метрах,
+    поворот в градусах, поле зрения. coverage_polygon — JSON [[x,y], ...];
+    null = считать автоматически из гомографии (проекция рамки кадра)."""
+    __tablename__ = "spatial_camera_setups"
+
+    camera_id: Mapped[int] = mapped_column(
+        ForeignKey("cameras.id", ondelete="CASCADE"), primary_key=True
+    )
+    floor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("spatial_floors.id", ondelete="SET NULL"), nullable=True
+    )
+    pos_x: Mapped[float] = mapped_column(Float, default=0.0)
+    pos_y: Mapped[float] = mapped_column(Float, default=0.0)
+    pos_z: Mapped[float] = mapped_column(Float, default=3.0)
+    yaw: Mapped[float] = mapped_column(Float, default=0.0)
+    pitch: Mapped[float] = mapped_column(Float, default=0.0)
+    roll: Mapped[float] = mapped_column(Float, default=0.0)
+    fov_h: Mapped[float] = mapped_column(Float, default=90.0)
+    fov_v: Mapped[float] = mapped_column(Float, default=55.0)
+    coverage_polygon: Mapped[str | None] = mapped_column(String(4000), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, onupdate=_utcnow
+    )
+
+
+class SpatialCalibration(Base):
+    """Калибровка камеры: ≥4 пар pixel↔world точек на полу → гомография
+    (cv2.findHomography). Перезапись строки = перекалибровка.
+    resolution — разрешение потока в момент калибровки (гомография
+    привязана к пикселям)."""
+    __tablename__ = "spatial_calibrations"
+
+    camera_id: Mapped[int] = mapped_column(
+        ForeignKey("cameras.id", ondelete="CASCADE"), primary_key=True
+    )
+    homography: Mapped[str] = mapped_column(String(2000))
+    calibration_points: Mapped[str] = mapped_column(String(6000))
+    resolution_w: Mapped[int] = mapped_column(Integer)
+    resolution_h: Mapped[int] = mapped_column(Integer)
+    reprojection_error: Mapped[float] = mapped_column(Float, default=0.0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, onupdate=_utcnow
+    )
+
+
+class SpatialNode(Base):
+    """Узел навигационного графа: коридор/комната/дверь/лестница/лифт/вход/
+    выход/запретная зона. Межэтажные переходы — только через stairs/elevator."""
+    __tablename__ = "spatial_nodes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    floor_id: Mapped[int] = mapped_column(
+        ForeignKey("spatial_floors.id", ondelete="CASCADE"), index=True
+    )
+    ntype: Mapped[str] = mapped_column(String(20))
+    name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    pos_x: Mapped[float] = mapped_column(Float)
+    pos_y: Mapped[float] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class SpatialEdge(Base):
+    """Ребро навигационного графа (двустороннее): distance — метры,
+    min_time/max_time — допустимое время прохода (сек); null = рассчитывать
+    из расстояния и SPATIAL_MAX_SPEED."""
+    __tablename__ = "spatial_edges"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    from_node: Mapped[int] = mapped_column(
+        ForeignKey("spatial_nodes.id", ondelete="CASCADE"), index=True
+    )
+    to_node: Mapped[int] = mapped_column(
+        ForeignKey("spatial_nodes.id", ondelete="CASCADE"), index=True
+    )
+    distance: Mapped[float] = mapped_column(Float)
+    min_time: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_time: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class SpatialObservation(Base):
+    """Мировая позиция человека (foot point → гомография): пишется трекингом
+    с троттлингом SPATIAL_OBS_INTERVAL при известном global_id."""
+    __tablename__ = "spatial_observations"
+    __table_args__ = (
+        Index("ix_spatial_obs_gid_ts", "global_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    global_id: Mapped[int] = mapped_column(
+        ForeignKey("global_persons.id", ondelete="CASCADE"), index=True
+    )
+    camera_id: Mapped[int] = mapped_column(
+        ForeignKey("cameras.id", ondelete="CASCADE"), index=True
+    )
+    track_id: Mapped[int] = mapped_column(Integer)
+    floor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("spatial_floors.id", ondelete="SET NULL"), nullable=True
+    )
+    world_x: Mapped[float] = mapped_column(Float)
+    world_y: Mapped[float] = mapped_column(Float)
+    speed: Mapped[float | None] = mapped_column(Float, nullable=True)
+    direction: Mapped[float | None] = mapped_column(Float, nullable=True)  # рад
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

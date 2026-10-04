@@ -401,6 +401,48 @@ body {
   display: block;
 }
 
+.filters {
+  display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.filters input, .filters select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: inherit;
+}
+.filters input { flex: 1 1 220px; min-width: 160px; }
+.filters select { flex: 0 0 auto; }
+.filters input:focus, .filters select:focus { outline: none; border-color: var(--accent); }
+
+.gp-avatar {
+  height: 40px; border-radius: 6px; border: 1px solid var(--border);
+  display: block;
+}
+.gp-head { display: flex; gap: 16px; align-items: center; }
+.gp-head-info { min-width: 0; }
+.gp-head-info a { color: var(--accent); text-decoration: none; }
+.gp-head-info a:hover { text-decoration: underline; }
+.gp-avatar-lg {
+  height: 96px; border-radius: 8px; border: 1px solid var(--border);
+  display: block; flex: none;
+}
+.merge-form { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.merge-form input {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: inherit;
+  width: 200px;
+}
+.merge-form input:focus { outline: none; border-color: var(--accent); }
+.merge-form button { flex: none; }
+
 /* ---------- таблицы ---------- */
 .table-wrap { overflow-x: auto; }
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -414,3 +456,126 @@ body {
   .view { grid-template-columns: 1fr; }
   .nav { margin-left: 8px; gap: 10px; }
 }
+
+/* ---------- 2.5D Spatial World Model (/spatial-model) ---------- */
+.sp-container { max-width: 1500px; }
+.sp-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
+.sp-modes { display: flex; gap: 6px; flex-wrap: wrap; }
+.sp-view-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sp-view-controls select {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px;
+  font-family: inherit; font-size: 13px;
+}
+.sp-check {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--muted); cursor: pointer; white-space: nowrap;
+}
+
+.sp-layout {
+  display: grid; grid-template-columns: 1fr 360px; gap: 16px;
+  margin-top: 16px; align-items: stretch;
+}
+@media (max-width: 1100px) { .sp-layout { grid-template-columns: 1fr; } }
+
+.sp-canvas-panel {
+  position: relative; padding: 0; overflow: hidden;
+  min-height: 74vh; display: flex;
+}
+.sp-canvas-panel canvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
+.sp-map-badge {
+  position: absolute; top: 10px; left: 12px;
+  background: rgba(15, 19, 26, 0.75); padding: 4px 10px; border-radius: 8px;
+  pointer-events: none;
+}
+.sp-canvas-panel .empty {
+  position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: center; padding: 30px;
+}
+.sp-canvas-panel .empty[hidden] { display: none; }
+
+.sp-side { max-height: 80vh; overflow-y: auto; }
+.sp-side h3 { margin: 14px 0 8px; font-size: 14px; }
+.sp-side h3:first-child { margin-top: 0; }
+
+/* инструменты редактора */
+.sp-tool-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.sp-tool-btn { padding: 7px 8px; font-size: 12px; }
+.sp-tool-hint { margin-top: 8px; min-height: 16px; }
+
+.sp-form { margin-top: 14px; }
+.sp-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.sp-field-label { font-size: 12px; color: var(--muted); }
+.sp-field input, .sp-field select {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 7px 10px; font-family: inherit; font-size: 13px;
+}
+.sp-field input:focus, .sp-field select:focus {
+  outline: none; border-color: var(--accent);
+}
+.sp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+.sp-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.sp-file { margin: 8px 0; font-size: 12px; color: var(--muted); }
+
+/* кадр камеры (калибровка/отладка) */
+.sp-frame-wrap { position: relative; margin: 10px 0; }
+.sp-frame { width: 100%; display: block; border-radius: 8px;
+  border: 1px solid var(--border); background: #000; min-height: 60px; }
+.sp-frame-overlay {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  cursor: crosshair;
+}
+
+/* точки калибровки */
+.sp-points { display: flex; flex-direction: column; gap: 5px; margin: 8px 0; }
+.sp-point-row { display: flex; align-items: center; gap: 6px; }
+.sp-point-idx { font-weight: 700; font-size: 12px; width: 24px; }
+.sp-point-px { width: 86px; flex: none; }
+.sp-point-w {
+  width: 64px; background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 6px; font-size: 12px; font-family: inherit;
+}
+.sp-point-map { padding: 4px 8px; font-size: 11px; }
+.sp-point-ok { color: var(--online); font-weight: 700; }
+.sp-cal-result { margin-top: 8px; color: var(--muted); }
+.sp-warn { color: var(--connecting); }
+
+/* люди на карте */
+.sp-people-list { display: flex; flex-direction: column; gap: 4px; }
+.sp-person-row {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; padding: 8px 10px;
+  cursor: pointer; font-family: inherit; font-size: 13px; text-align: left;
+}
+.sp-person-row:hover { border-color: var(--accent); }
+.sp-person-row.active { border-color: var(--accent);
+  background: rgba(79, 140, 255, 0.12); }
+.sp-person-dot { width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent); flex: none; }
+.sp-person-details { margin-top: 14px; border-top: 1px solid var(--border);
+  padding-top: 4px; }
+.sp-detail-grid { display: flex; flex-direction: column; gap: 3px; margin: 8px 0; }
+.sp-detail-row { display: flex; justify-content: space-between; font-size: 13px; }
+.sp-detail-label { margin-top: 10px; }
+.sp-predict-line { font-size: 13px; color: var(--connecting); margin: 2px 0; }
+.sp-person-details a { display: inline-block; margin-top: 10px; color: var(--accent); }
+
+/* отладочный список */
+.sp-debug-list { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+
+/* уведомление */
+.sp-toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: var(--panel-2); border: 1px solid var(--accent);
+  color: var(--text); padding: 10px 18px; border-radius: 10px;
+  font-size: 13px; opacity: 0; pointer-events: none;
+  transition: opacity 0.25s, transform 0.25s; z-index: 50; max-width: 80vw;
+}
+.sp-toast.sp-toast-show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.sp-link-block { display: inline-block; margin-top: 6px; font-size: 12px; }

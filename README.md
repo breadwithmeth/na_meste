@@ -141,9 +141,11 @@ python main.py
 - **Присутствие**: кто сейчас на камерах + история сессий
 - **Посторонние**: галерея зафиксированных неопознанных людей (снимок,
   камера, время) + каждое событие уходит в Telegram
-- **Люди**: глобальные личности (межкамерный трекинг) — список, карточка
-  с траекторией (цепочка камер) и таймлайном наблюдений со снимками;
-  на странице камеры боксы подписаны `T<трек>·G<global_id>`
+- **Люди**: глобальные личности (межкамерный трекинг) — список с аватарками
+  (последний снимок), фильтрами (статус, камера, поиск по G#id или имени
+  сотрудника) и счётчиком фиксаций постороннего; карточка с траекторией
+  (цепочка камер), таймлайном наблюдений со снимками, слиянием лишних
+  global_id; на странице камеры боксы подписаны `T<трек>·G<global_id>`
 
 ## Фиксация посторонних и Telegram
 
@@ -217,10 +219,16 @@ CAM-02 → track_id=42 ─┘
 4. **ложное слияние опаснее лишнего ID**: при score ниже порога или
    неоднозначности (два кандидата ближе `GLOBAL_MATCH_MARGIN`) создаётся
    новая личность, сомнительный матч пишется как `ambiguous_match`;
-5. события: `person_seen` (появление на камере) и `camera_transition`
-   (переход) — в таблице `global_events`, история эмбеддингов и снимки —
-   в `global_observations` (persistent identity gallery);
-6. ошибки Re-ID/БД изолированы: RTSP → detection → tracking продолжают
+5. события: `person_seen` (появление на камере), `camera_transition`
+   (переход) и `person_lost` (identity истекла по gallery_ttl) — в таблице
+   `global_events`, история эмбеддингов и снимки — в `global_observations`
+   (persistent identity gallery);
+6. **дробление устраняется вручную**: т.к. ложное слияние опаснее лишнего
+   ID, фрагменты накапливаются — на странице личности лишний G#id
+   вливается в нужный (`POST /api/global-persons/{id}/merge/{source}`):
+   наблюдения, события и фиксации посторонних переносятся, галерея
+   эмбеддингов и живые привязки треков объединяются;
+7. ошибки Re-ID/БД изолированы: RTSP → detection → tracking продолжают
    работать (проверено тестами).
 
 Включение/выключение: `MULTI_CAMERA_TRACKING_ENABLED=false` — система
@@ -241,6 +249,134 @@ curl -L -o models/osnet_x0_25_msmt17.onnx \
 Скопируйте `topology.json.example` → `topology.json`, укажите id камер и
 допустимые времена переходов, затем `TOPOLOGY_CONFIG=topology.json` в .env.
 Без топологии матчи идут только по Re-ID + времени (нейтральная оценка).
+При включённой 2.5D-модели топология.json не нужна — навигационный граф
+в `/spatial-model` заменяет её.
+
+## 2.5D Spatial World Model (метрическая модель помещения)
+
+**Re-ID отвечает на вопрос «похож ли это на того же человека?», 2.5D-модель —
+«мог ли он физически оказаться здесь?».** Оба сигнала используются совместно:
+модель добавляет к матчингу пространственные оценки и запрещает физически
+невозможные переходы (12 м за 2 секунды, другой этаж без лестницы).
+
+Это опциональный слой НАД существующим пайплайном — YOLO, ByteTracker,
+Re-ID и topology.json не меняются. Выключен по умолчанию
+(`SPATIAL_MODEL_ENABLED=false` — поведение системы идентично прежнему).
+
+```text
+RTSP → YOLO → локальный трекер → bbox
+    → foot point (низ-центр bbox ≈ ноги на полу)
+    → гомография → мировые X/Y (метры)
+    → траектория (EMA, скорость, направление)
+    → spatial-оценки матчинга → global_id
+    → карта 2.5D / таймлайн / события
+```
+
+### Что входит
+
+- **Модель помещения** (метры): этажи (z — высота пола), стены/двери/
+  лестницы/лифты (отрезки с высотой), зоны (полигоны), планировка-подложка
+  с масштабом и привязкой к мировым координатам;
+- **Калибровка камер**: ≥4 известных точек пола «клик по кадру → мировые
+  координаты» → `cv2.findHomography` → pixel→world; повторная калибровка
+  перезаписывает; зона видимости камеры строится автоматически из проекции
+  рамки кадра (или задаётся вручную);
+- **Навигационный граф**: узлы (коридор/комната/дверь/лестница/лифт/вход/
+  выход/запретная зона) и рёбра; межэтажные переходы — только через
+  stairs/elevator; Дейкстра даёт расстояние и минимальное время прохода;
+- **Скоринг матчинга** (профиль ТЗ при включённой модели):
+  `final = W_REID·reid + W_SPATIAL·spatial + W_TEMPORAL·temporal(физическая)
+  + W_DIRECTION·direction` — по умолчанию 0.50/0.25/0.15/0.10. Spatial-данных
+  нет (камера не откалибрована, первый трек) — прежние 5 слагаемых;
+- **Veto**: расстояние/время физически невозможны, другой этаж без
+  stairs/elevator — кандидат отбрасывается с причиной;
+- **Предсказание**: позиция + скорость + граф → какие камеры «впереди» и
+  когда человек попадёт в их зону видимости (ETA);
+- **Карта** `/spatial-model`: top-down (стены, двери, зоны, камеры с FOV и
+  зонами видимости, люди с траекториями/скоростью/предсказанием) и режим
+  «Изометрия» (этажи по высоте, стены параллелограммами) — без внешних
+  библиотек, чистый canvas.
+
+### Включение и настройка
+
+1. Откройте `/spatial-model` → «Редактор»: создайте этаж, при желании
+   загрузите планировку и задайте масштаб (2 клика + реальное расстояние в
+   метрах), нарисуйте стены/двери, разместите камеры (позиция, поворот, FOV);
+2. «Калибровка»: выберите камеру → «Снимок» → кликните ≥4 известных точки
+   ПОЛА → мировые координаты вручную или кнопкой «карта» → «Калибровать».
+   Кнопка «Сетка 1 м» проецирует мировую сетку на кадр — визуальная
+   проверка качества калибровки;
+3. «Отладка» (Calibration debug): на живом кадре показываются bbox, foot
+   point (жёлтый крестик) и мировые координаты каждого человека — те же
+   точки одновременно на карте. Это критично для проверки калибровки;
+4. `SPATIAL_MODEL_ENABLED=true` в `.env` — модель начинает влиять на
+   матчинг (перезапуск приложения).
+
+### Калибровка по ArUco-маркерам (автоматическая)
+
+Без ручных кликов и с субпиксельной точностью:
+
+1. **«Скачать лист маркеров»** на вкладке «Калибровка» — печатный A4-лист
+   (`GET /api/spatial/markers/sheet?count=6&marker_cm=10`). Печать строго
+   в масштабе 100%; контрольный отрезок 10 см на листе должен совпасть с
+   линейкой. Матовая бумага — глянец бликует;
+2. Наклейте маркеры малярным скотчем на пол с разбросом по кадру
+   (ближняя/дальняя зона, лево/право), замерьте **центр каждого маркера**
+   от нуля координат;
+3. «Найти маркеры в кадре» — детектор покажет их на снимке (зелёные
+   квадраты); заполните таблицу ID → (X, Y);
+4. «Калибровать автоматически» — гомография считается по детектированным
+   центрам, ошибка репроекции и зона видимости как при ручной калибровке;
+5. **Цепочка без рулетки**: координаты маркеров общие для всех камер —
+   откалибруйте одну, и для соседних нажмите «Перенести координаты»:
+   калиброванная камера сама «обмерит» маркеры своей гомографией
+   (`POST /api/spatial/cameras/{id}/markers/measure`).
+
+Словарь `DICT_4X4_50` (крупные биты — устойчивость к наклонным ракурсам
+с высоты ~3 м). Маркеры 10 см при съёмке с 3 м; при очень косых ракурсах
+крупнее. Пара маркеров можно оставить постоянными вдоль стен — дрейф
+калибровки всегда поправится одной кнопкой.
+
+### API
+
+```bash
+# полный мир: этажи с объектами, камеры, узлы и рёбра графа
+curl -s localhost:8000/api/spatial/world
+
+# люди сейчас в мировых координатах (для карты, поллинг 1 с)
+curl -s localhost:8000/api/spatial/live
+
+# калибровка камеры: точки → гомография (перезапись = перекалибровка)
+curl -s -X POST localhost:8000/api/spatial/cameras/1/calibration \
+  -H "Content-Type: application/json" \
+  -d '{"points":[{"pixel":[421,712],"world":[2.0,3.0]}, ...],
+       "resolution":[1920,1080]}'
+
+# история/прогноз/отладка матчей
+curl -s localhost:8000/api/spatial/trajectories/184
+curl -s localhost:8000/api/spatial/prediction/184
+curl -s "localhost:8000/api/spatial/debug/matches?limit=20"
+```
+
+Полный список: `/docs` (тег `spatial`) — CRUD этажей/объектов/камер/узлов,
+планировки, `coverage`, `observations`.
+
+### Данные и производительность
+
+Мир хранится в SQLite (`spatial_floors`, `spatial_features`,
+`spatial_camera_setups`, `spatial_calibrations`, `spatial_nodes`,
+`spatial_edges`) и загружается в память; после правок через API живой
+инстанс перезагружает мир сам. Мировые позиции людей пишутся в
+`spatial_observations` с троттлингом `SPATIAL_OBS_INTERVAL=1` с на трек —
+никакой тяжёлой обработки на каждый кадр нет (проекция = умножение 3×3,
+Дейкстра кешируется до перезагрузки мира).
+
+### Отладка матчинга
+
+`MC_DEBUG=true` — логи `[MATCH]` с spatial-оценками и причинами veto.
+Каждое решение (MATCHED / NEW_IDENTITY + причины отказов) хранится в ring
+buffer: `GET /api/spatial/debug/matches`, spatial-оценки также попадают в
+payload событий `person_seen`/`camera_transition`.
 
 ## Как работает распознавание
 
@@ -339,10 +475,13 @@ curl -X DELETE http://localhost:8000/api/unknown/1
 
 # Межкамерный трекинг
 curl http://localhost:8000/api/global-persons
+curl "http://localhost:8000/api/global-persons?status=ACTIVE&search=G#184"
 curl http://localhost:8000/api/global-persons/1
+curl http://localhost:8000/api/global-persons/1/photo          # последний снимок
 curl http://localhost:8000/api/global-persons/1/timeline
 curl http://localhost:8000/api/global-persons/1/trajectory
 curl http://localhost:8000/api/global-persons/1/observations
+curl -X POST http://localhost:8000/api/global-persons/1/merge/2  # G#2 вливается в G#1
 curl http://localhost:8000/api/cameras/1/tracks
 ```
 
@@ -364,22 +503,30 @@ curl http://localhost:8000/api/cameras/1/tracks
 ├── topology.json.example       # топология камер для межкамерного трекинга
 ├── data/app.db                 # SQLite: cameras, employees, employee_faces,
 │                               # presence_sessions, unknown_events,
-│                               # global_persons, global_observations, global_events
+│                               # global_persons, global_observations, global_events,
+│                               # spatial_* (2.5D-модель: этажи, объекты, калибровки,
+│                               # граф, мировые наблюдения)
 ├── models/                     # yolov8n.onnx, buffalo_l/, osnet_x0_25_msmt17.onnx
 ├── app/
 │   ├── config.py               # настройки (.env)
 │   ├── api/                    # cameras.py, employees.py, presence.py,
-│   │                           # unknown.py, global_persons.py
+│   │                           # unknown.py, global_persons.py, spatial.py
 │   ├── database/               # database.py, models.py
 │   ├── rtsp/                   # dahua.py, reader.py, manager.py (без изменений AI)
 │   ├── ai/                     # detector.py, tracker.py, face_detector.py,
 │   │                           # face_recognition.py, recognition_service.py,
 │   │                           # reid.py, global_tracker.py, worker.py, providers.py
+│   ├── spatial/                # 2.5D Spatial World Model: geometry (гомография),
+│   │                           # world, trajectory, navigation, matcher, prediction,
+│   │                           # service — опциональный слой над трекингом
 │   ├── services/               # camera_service, employee_service, presence_service,
 │   │                           # unknown_service, telegram_service
 │   └── templates/              # index, camera, employees, employee_detail,
-│                               # presence, unknown, global_persons, global_person_detail
-└── static/                     # css + vanilla js
+│                               # presence, unknown, global_persons,
+│                               # global_person_detail, spatial_model
+├── static/                     # css + vanilla js (в т.ч. spatial_*.js для карты)
+└── tests/                      # test_global_persons.py, test_spatial.py:
+                                  # venv/Scripts/python tests/test_spatial.py
 ```
 
 ## Производительность

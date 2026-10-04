@@ -15,6 +15,7 @@
       <a href="/presence" class="nav-link">Присутствие</a>
       <a href="/unknown" class="nav-link">Посторонние</a>
       <a href="/global" class="nav-link active">Люди</a>
+      <a href="/spatial-model" class="nav-link">Пространство</a>
     </nav>
     <span id="summary" class="muted"></span>
   </header>
@@ -25,12 +26,27 @@
         <h2>Глобальные личности</h2>
         <span class="muted small">Один человек = один global_id на всех камерах (межкамерный Re-ID трекинг)</span>
       </div>
+
+      <div class="filters">
+        <input type="search" id="f-search" placeholder="Поиск: G#184 или имя сотрудника" autocomplete="off">
+        <select id="f-status">
+          <option value="">Все статусы</option>
+          <option value="ACTIVE">ACTIVE</option>
+          <option value="NEW">NEW</option>
+          <option value="LOST">LOST</option>
+        </select>
+        <select id="f-camera">
+          <option value="">Все камеры</option>
+        </select>
+      </div>
+
       <div class="table-wrap">
         <table class="table" id="persons-table">
           <thead>
             <tr>
-              <th>Global ID</th><th>Статус</th><th>Сотрудник</th>
-              <th>Последняя камера</th><th>Наблюдений</th><th>Последнее наблюдение</th><th></th>
+              <th></th><th>Global ID</th><th>Статус</th><th>Сотрудник</th>
+              <th>Последняя камера</th><th>Наблюдений</th><th>Фиксаций</th>
+              <th>Последнее наблюдение</th><th></th>
             </tr>
           </thead>
           <tbody></tbody>
