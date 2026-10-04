@@ -1,4 +1,4 @@
-// PALEVO — сотрудники: список + добавление.
+// сотрудники: список + добавление.
 
 const listEl = document.getElementById('employee-list');
 const emptyEl = document.getElementById('empty');

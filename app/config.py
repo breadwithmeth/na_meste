@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     ai_cameras: str = ""                    # "1,3,5" — пусто = все камеры
     ai_device: str = "auto"                 # auto | cpu | cuda
     person_confidence: float = 0.35         # порог YOLO для человека
+    tracker_new_track_threshold: float = 0.5  # score детекции, создающей НОВЫЙ трек
+                                              # (ниже — детекция только продлевает существующий)
     track_lost_timeout: float = 3.0         # сек grace period трека (re-identification)
     min_recognition_confidence: float = Field(
         default=0.45,

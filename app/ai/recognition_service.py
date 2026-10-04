@@ -59,6 +59,7 @@ class RecognitionService:
         retry_interval: float = 2.0,
         track_lost_timeout: float = 3.0,
         min_hits: int = 2,
+        tracker_high_threshold: float = 0.5,
     ):
         self.detector = detector
         self.faces = face_engine
@@ -68,6 +69,7 @@ class RecognitionService:
         self.retry_interval = retry_interval
         self.track_lost_timeout = track_lost_timeout
         self.min_hits = min_hits
+        self.tracker_high_threshold = tracker_high_threshold
         self._trackers: dict[int, ByteTracker] = {}
         self._lock = threading.Lock()  # на случай нескольких AI-воркеров
 
@@ -80,7 +82,9 @@ class RecognitionService:
         persons = self.detector.detect(frame)
         with self._lock:
             tracker = self._trackers.setdefault(
-                camera_id, ByteTracker(lost_timeout=self.track_lost_timeout)
+                camera_id,
+                ByteTracker(lost_timeout=self.track_lost_timeout,
+                            high_threshold=self.tracker_high_threshold),
             )
             tracks = tracker.update(persons, now)
 

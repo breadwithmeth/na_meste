@@ -113,7 +113,7 @@ class TelegramNotifier:
             return json.loads(resp.read())
 
     def _api_photo(self, jpeg: bytes, caption: str) -> None:
-        boundary = "----palevo7351"
+        boundary = "----monitor7351"
         parts = []
         for name, value in (("chat_id", self.chat_id), ("caption", caption)):
             parts.append(

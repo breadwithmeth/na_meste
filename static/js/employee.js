@@ -1,4 +1,4 @@
-// PALEVO — карточка сотрудника: данные, загрузка фото лиц, история присутствия.
+// карточка сотрудника: данные, загрузка фото лиц, история присутствия.
 
 const employeeId = window.EMPLOYEE_ID;
 const $ = (id) => document.getElementById(id);
@@ -24,7 +24,7 @@ async function loadEmployee() {
     location.href = '/employees';
     return;
   }
-  document.title = `${emp.name} — PALEVO`;
+  document.title = `${emp.name}`;
   $('emp-title').textContent = emp.name;
   const f = $('emp-form');
   f.name.value = emp.name;

@@ -1,4 +1,4 @@
-"""PALEVO — мониторинг камер Dahua (RTSP) и присутствия сотрудников (AI).
+"""Мониторинг камер Dahua (RTSP) и присутствия сотрудников (AI).
 
 Запуск:
     python main.py
@@ -107,7 +107,7 @@ async def lifespan(app: FastAPI):
     logger.info("Приложение остановлено")
 
 
-app = FastAPI(title="PALEVO", lifespan=lifespan)
+app = FastAPI(title="Мониторинг", lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "app" / "templates")

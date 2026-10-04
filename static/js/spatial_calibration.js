@@ -440,7 +440,7 @@
       ctx.lineWidth = 2;
       ctx.strokeRect(x - s / 2, y - s / 2, s, s);
       ctx.fillStyle = '#2ecc71';
-      ctx.font = 'bold 11px "Segoe UI", sans-serif';
+      ctx.font = 'bold 11px Roboto, "Segoe UI", sans-serif';
       ctx.fillText(`ID ${m.id}`, x + s / 2 + 4, y - 4);
     }
     // точки
@@ -453,7 +453,7 @@
       ctx.moveTo(x + 6, y - 6); ctx.lineTo(x - 6, y + 6);
       ctx.stroke();
       ctx.fillStyle = 'rgba(232,236,243,0.9)';
-      ctx.font = '10px "Segoe UI", sans-serif';
+      ctx.font = '10px Roboto, "Segoe UI", sans-serif';
       ctx.fillText(`${i + 1}`, x + 8, y - 6);
     });
     // мировая сетка 1 м через H⁻¹ — визуальная проверка калибровки
@@ -573,7 +573,7 @@
       ctx.strokeRect(px1, py1, px2 - px1, py2 - py1);
       const label = `T${track.track_id}` + (track.global_id ? ` · G#${track.global_id}` : '');
       ctx.fillStyle = 'rgba(79,140,255,0.9)';
-      ctx.font = 'bold 11px "Segoe UI", sans-serif';
+      ctx.font = 'bold 11px Roboto, "Segoe UI", sans-serif';
       ctx.fillText(label, px1, py1 - 4);
       // foot point
       const fx = (x1 + x2) / 2 * img.naturalWidth;

@@ -1,4 +1,4 @@
-// PALEVO — страница камеры: MJPEG + overlay bounding boxes + статус.
+// страница камеры: MJPEG + overlay bounding boxes + статус.
 
 const cameraId = window.CAMERA_ID;
 const $ = (id) => document.getElementById(id);
@@ -16,7 +16,7 @@ async function refresh() {
     return;
   }
 
-  document.title = `${cam.name} — PALEVO`;
+  document.title = `${cam.name}`;
   $('camera-title').textContent = cam.name;
 
   const status = cam.status || 'OFFLINE';

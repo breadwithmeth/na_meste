@@ -1,4 +1,4 @@
-// PALEVO — дашборд: карточки камер + статусы + счётчики людей, добавление камер.
+// дашборд: карточки камер + статусы + счётчики людей, добавление камер.
 
 const gridEl = document.getElementById('camera-grid');
 const emptyEl = document.getElementById('empty');

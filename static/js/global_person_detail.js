@@ -1,4 +1,4 @@
-// PALEVO — карточка глобальной личности: шапка, слияние, траектория, таймлайн.
+// карточка глобальной личности: шапка, слияние, траектория, таймлайн.
 
 const globalId = window.GLOBAL_ID;
 const $ = (id) => document.getElementById(id);
@@ -27,10 +27,11 @@ async function loadPerson() {
     $('gp-title').textContent = 'не найдена';
     return;
   }
+  lastPerson = p;
   const title = p.employee_name
     ? `G#${p.global_id} · ${p.employee_name}`
     : `G#${p.global_id}`;
-  document.title = `${title} — PALEVO`;
+  document.title = `${title}`;
   $('gp-name').textContent = title;
   $('gp-title').textContent = `${p.status}`;
 
@@ -54,7 +55,82 @@ async function loadPerson() {
     img.hidden = false;
     img.onerror = () => { img.hidden = true; };
   }
+  syncEmployeeForm(p);
 }
+
+// Привязка сотрудника: список загружается один раз, форма отражает текущую связь
+let employeesLoaded = false;
+let lastPerson = null;
+
+async function loadEmployees() {
+  try {
+    const res = await fetch('/api/employees');
+    if (!res.ok) throw new Error();
+    const employees = await res.json();
+    const select = $('employee-select');
+    select.innerHTML = '';
+    for (const e of employees) {
+      const option = document.createElement('option');
+      option.value = e.id;
+      option.textContent = e.active ? e.name : `${e.name} (неактивен)`;
+      select.appendChild(option);
+    }
+    employeesLoaded = true;
+    syncEmployeeForm(lastPerson);
+  } catch (e) { /* список недоступен — форма останется пустой */ }
+}
+
+function syncEmployeeForm(p) {
+  if (!employeesLoaded || !p) return;
+  const select = $('employee-select');
+  const unlink = $('employee-unlink');
+  if (p.employee_id) {
+    select.value = p.employee_id;
+    unlink.hidden = false;
+  } else {
+    unlink.hidden = true;
+  }
+}
+
+$('employee-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const employeeId = parseInt($('employee-select').value, 10);
+  const status = $('employee-status');
+  if (!employeeId) return;
+  status.textContent = 'Сохранение…';
+  try {
+    const res = await fetch(`/api/global-persons/${globalId}/employee/${employeeId}`, {
+      method: 'PUT',
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      status.textContent = data.detail || 'Ошибка привязки';
+      return;
+    }
+    status.textContent = `Связано: ${data.employee_name || '#' + data.employee_id}`;
+    loadPerson();
+  } catch (err) {
+    status.textContent = 'Ошибка привязки';
+  }
+});
+
+$('employee-unlink').addEventListener('click', async () => {
+  const status = $('employee-status');
+  status.textContent = 'Отвязка…';
+  try {
+    const res = await fetch(`/api/global-persons/${globalId}/employee`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      status.textContent = 'Ошибка отвязки';
+      return;
+    }
+    status.textContent = 'Привязка снята';
+    loadPerson();
+  } catch (err) {
+    status.textContent = 'Ошибка отвязки';
+  }
+});
 
 async function loadTrajectory() {
   let data;
@@ -212,6 +288,7 @@ $('merge-form').addEventListener('submit', async (e) => {
 });
 
 loadPerson();
+loadEmployees();
 loadTrajectory();
 loadTimeline();
 setInterval(() => { loadPerson(); loadTrajectory(); loadTimeline(); }, 5000);

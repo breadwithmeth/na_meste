@@ -12,17 +12,17 @@
   const ISO_Z = 0.9;              // масштаб высоты Z в изометрии
 
   const COLORS = {
-    wall: '#5b6b85', door: '#4f8cff', stairs: '#b8925b', elevator: '#9b7ede',
-    zone: 'rgba(79,140,255,0.10)', zoneStroke: 'rgba(79,140,255,0.45)',
-    restricted: 'rgba(231,76,60,0.12)', restrictedStroke: 'rgba(231,76,60,0.55)',
-    entrance: 'rgba(46,204,113,0.14)', entranceStroke: 'rgba(46,204,113,0.6)',
-    coverage: 'rgba(79,140,255,0.10)', coverageStroke: 'rgba(79,140,255,0.35)',
-    node: '#8b96a8', edge: 'rgba(139,150,168,0.45)',
-    trail: 'rgba(46,204,113,0.8)', predict: 'rgba(241,196,15,0.9)',
-    debug: '#f1c40f',
+    wall: '#49454F', door: '#6750A4', stairs: '#825500', elevator: '#7D5260',
+    zone: 'rgba(103,80,164,0.08)', zoneStroke: 'rgba(103,80,164,0.45)',
+    restricted: 'rgba(179,38,30,0.10)', restrictedStroke: 'rgba(179,38,30,0.55)',
+    entrance: 'rgba(46,125,67,0.12)', entranceStroke: 'rgba(46,125,67,0.55)',
+    coverage: 'rgba(103,80,164,0.08)', coverageStroke: 'rgba(103,80,164,0.35)',
+    node: '#49454F', edge: 'rgba(73,69,79,0.35)',
+    trail: 'rgba(37,104,57,0.8)', predict: 'rgba(191,143,0,0.95)',
+    debug: '#825500',
   };
-  const PERSON_COLORS = ['#4f8cff', '#2ecc71', '#f1c40f', '#e67e22',
-    '#e74c3c', '#9b59b6', '#1abc9c', '#fd79a8', '#55efc4', '#74b9ff'];
+  const PERSON_COLORS = ['#1565C0', '#00695C', '#2E7D32', '#C2185B', '#EF6C00',
+    '#6A1B9A', '#00838F', '#283593', '#8D6E63', '#546E7A'];
 
   const NODE_ICONS = {
     corridor: '▬', room: '⌂', door: '⌸', stairs: '⩗',
@@ -263,10 +263,10 @@
         ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
         ctx.lineTo(b2.x, b2.y); ctx.lineTo(a2.x, a2.y);
         ctx.closePath();
-        ctx.fillStyle = 'rgba(91,107,133,0.30)';
+        ctx.fillStyle = 'rgba(73,69,79,0.18)';
         ctx.fill();
       }
-      ctx.strokeStyle = selected ? '#ffffff' : color;
+      ctx.strokeStyle = selected ? '#1C1B1F' : color;
       ctx.beginPath();
       ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
       ctx.stroke();
@@ -281,7 +281,7 @@
       if (feat.type === 'stairs' || feat.type === 'elevator') {
         const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
         ctx.fillStyle = color;
-        ctx.font = '12px "Segoe UI", sans-serif';
+        ctx.font = '12px Roboto, "Segoe UI", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(feat.type === 'stairs' ? '⩗' : '⇕', mx, my - 6);
       }
@@ -300,7 +300,7 @@
         : isEntrance ? COLORS.entrance : COLORS.zone;
       ctx.fill();
       ctx.setLineDash([6, 4]);
-      ctx.strokeStyle = selected ? '#ffffff'
+      ctx.strokeStyle = selected ? '#1C1B1F'
         : isRestricted ? COLORS.restrictedStroke
         : isEntrance ? COLORS.entranceStroke : COLORS.zoneStroke;
       ctx.lineWidth = selected ? 2.5 : 1.5;
@@ -309,8 +309,8 @@
       if (feat.name) {
         const c = g.points.reduce((acc, p) => [acc[0] + p[0], acc[1] + p[1]], [0, 0]);
         const s = toScreen(c[0] / g.points.length, c[1] / g.points.length, z);
-        ctx.fillStyle = 'rgba(232,236,243,0.75)';
-        ctx.font = '11px "Segoe UI", sans-serif';
+        ctx.fillStyle = 'rgba(28,27,31,0.8)';
+        ctx.font = '11px Roboto, "Segoe UI", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(feat.name, s.x, s.y);
       }
@@ -348,9 +348,9 @@
       ctx.lineTo(a1.x, a1.y);
       ctx.lineTo(a2.x, a2.y);
       ctx.closePath();
-      ctx.fillStyle = 'rgba(79,140,255,0.08)';
+      ctx.fillStyle = 'rgba(103,80,164,0.10)';
       ctx.fill();
-      ctx.strokeStyle = 'rgba(79,140,255,0.30)';
+      ctx.strokeStyle = 'rgba(103,80,164,0.35)';
       ctx.stroke();
       // направление взгляда
       ctx.beginPath();
@@ -361,13 +361,13 @@
     // значок
     ctx.beginPath();
     ctx.arc(c.x, c.y, selected ? 8 : 6, 0, Math.PI * 2);
-    ctx.fillStyle = cam.calibrated ? '#2ecc71' : '#6b7687';
+    ctx.fillStyle = cam.calibrated ? '#2E7D32' : '#79747E';
     ctx.fill();
     ctx.lineWidth = 2;
-    ctx.strokeStyle = selected ? '#ffffff' : '#171d27';
+    ctx.strokeStyle = selected ? '#1C1B1F' : '#171d27';
     ctx.stroke();
-    ctx.fillStyle = 'rgba(232,236,243,0.85)';
-    ctx.font = 'bold 10px "Segoe UI", sans-serif';
+    ctx.fillStyle = 'rgba(28,27,31,0.9)';
+    ctx.font = 'bold 10px Roboto, "Segoe UI", sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(`CAM ${cam.camera_id}${cam.calibrated ? '' : ' ⚠'}`, c.x, c.y - 10);
   }
@@ -401,13 +401,13 @@
       ctx.beginPath();
       ctx.arc(s.x, s.y, selected ? 7 : 5, 0, Math.PI * 2);
       ctx.fillStyle = n.type === 'stairs' || n.type === 'elevator'
-        ? '#b8925b' : COLORS.node;
+        ? '#825500' : COLORS.node;
       ctx.fill();
       if (selected) {
-        ctx.lineWidth = 2; ctx.strokeStyle = '#ffffff'; ctx.stroke();
+        ctx.lineWidth = 2; ctx.strokeStyle = '#1C1B1F'; ctx.stroke();
       }
-      ctx.fillStyle = 'rgba(232,236,243,0.7)';
-      ctx.font = '10px "Segoe UI", sans-serif';
+      ctx.fillStyle = 'rgba(28,27,31,0.75)';
+      ctx.font = '10px Roboto, "Segoe UI", sans-serif';
       ctx.textAlign = 'center';
       const label = n.name || n.type;
       ctx.fillText(`${NODE_ICONS[n.type] || '•'} ${label}`, s.x, s.y - 9);
@@ -478,10 +478,10 @@
       ctx.fillStyle = color;
       ctx.fill();
       if (selected) {
-        ctx.lineWidth = 2.5; ctx.strokeStyle = '#ffffff'; ctx.stroke();
+        ctx.lineWidth = 2.5; ctx.strokeStyle = '#1C1B1F'; ctx.stroke();
       }
-      ctx.fillStyle = 'rgba(232,236,243,0.95)';
-      ctx.font = 'bold 11px "Segoe UI", sans-serif';
+      ctx.fillStyle = 'rgba(28,27,31,0.95)';
+      ctx.font = 'bold 11px Roboto, "Segoe UI", sans-serif';
       ctx.textAlign = 'center';
       const speedTxt = p.speed != null ? ` · ${p.speed.toFixed(1)} м/с` : '';
       ctx.fillText(`G#${p.global_id}${speedTxt}`, c.x, c.y - 13);
@@ -499,7 +499,7 @@
       ctx.moveTo(s.x + 6, s.y - 6); ctx.lineTo(s.x - 6, s.y + 6);
       ctx.stroke();
       ctx.fillStyle = COLORS.debug;
-      ctx.font = '10px "Segoe UI", sans-serif';
+      ctx.font = '10px Roboto, "Segoe UI", sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText(dp.label || '', s.x + 8, s.y - 4);
     }

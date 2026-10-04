@@ -110,7 +110,7 @@ def generate_sheet(count: int = 6, marker_cm: float = 10.0,
     # шапка-инструкция (латиницей — putText не умеет кириллицу)
     y = int(0.5 * px_per_cm)
     for line in (
-        "PALEVO - ArUco markers for camera calibration",
+            "ArUco markers for camera calibration",
         "PRINT AT 100% SCALE (ACTUAL SIZE), then check the 10 cm bar below",
         "Glue markers to the floor; measure each marker CENTER from (0,0)",
     ):
@@ -185,7 +185,7 @@ def render_marker_pages(count: int = 20, marker_cm: float = 18.0,
         # шапка (латиницей — putText не умеет кириллицу)
         y = int(0.5 * px_per_cm)
         for line in (
-            f"PALEVO - ArUco marker ID {marker_id} (DICT_4X4_50)",
+            f"ArUco marker ID {marker_id} (DICT_4X4_50)",
             "PRINT AT 100% SCALE (ACTUAL SIZE), check the 10 cm bar below",
             "Glue to the floor; measure the marker CENTER from (0,0)",
         ):

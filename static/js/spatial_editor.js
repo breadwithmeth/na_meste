@@ -564,16 +564,16 @@
         }
       };
       if (pending.length) {
-        drawPts(pending, '#f1c40f',
+        drawPts(pending, '#825500',
           tool === 'zone' || tool === 'restricted_zone'
           || tool === 'entrance' || tool === 'exit');
       }
-      if (scalePicks.length) drawPts(scalePicks, '#2ecc71', false);
+      if (scalePicks.length) drawPts(scalePicks, '#2E7D32', false);
       if (edgeFrom) {
         const s = toScreen(edgeFrom.position[0], edgeFrom.position[1], 0);
         ctx.beginPath();
         ctx.arc(s.x, s.y, 9, 0, Math.PI * 2);
-        ctx.strokeStyle = '#f1c40f';
+        ctx.strokeStyle = '#825500';
         ctx.lineWidth = 2;
         ctx.stroke();
       }

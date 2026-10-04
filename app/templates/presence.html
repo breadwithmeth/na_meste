@@ -1,24 +1,9 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Присутствие — PALEVO</title>
-  <link rel="stylesheet" href="/static/css/style.css">
-</head>
-<body>
-  <header class="topbar">
-    <a class="brand" href="/"><span class="dot"></span> PALEVO</a>
-    <nav class="nav">
-      <a href="/" class="nav-link">Камеры</a>
-      <a href="/employees" class="nav-link">Сотрудники</a>
-      <a href="/presence" class="nav-link active">Присутствие</a>
-      <a href="/unknown" class="nav-link">Посторонние</a>
-      <a href="/global" class="nav-link">Люди</a>
-      <a href="/spatial-model" class="nav-link">Пространство</a>
-    </nav>
-  </header>
+{% extends "base.html" %}
+{% set active_page = 'presence' %}
 
+{% block title %}Присутствие{% endblock %}
+
+{% block content %}
   <main class="container">
     <section class="panel">
       <div class="panel-head">
@@ -49,7 +34,8 @@
       <div id="history-empty" class="empty">Истории пока нет.</div>
     </section>
   </main>
+{% endblock %}
 
+{% block scripts %}
   <script src="/static/js/presence.js"></script>
-</body>
-</html>
+{% endblock %}

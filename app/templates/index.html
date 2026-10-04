@@ -1,27 +1,13 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PALEVO — Мониторинг</title>
-  <link rel="stylesheet" href="/static/css/style.css">
-</head>
-<body>
-  <header class="topbar">
-    <a class="brand" href="/"><span class="dot"></span> PALEVO</a>
-    <nav class="nav">
-      <a href="/" class="nav-link active">Камеры</a>
-      <a href="/employees" class="nav-link">Сотрудники</a>
-      <a href="/presence" class="nav-link">Присутствие</a>
-      <a href="/unknown" class="nav-link">Посторонние</a>
-      <a href="/global" class="nav-link">Люди</a>
-      <a href="/spatial-model" class="nav-link">Пространство</a>
-    </nav>
-    <div class="topbar-right">
-      <button id="btn-add" class="btn primary">+ Добавить камеру</button>
-    </div>
-  </header>
+{% extends "base.html" %}
+{% set active_page = 'cameras' %}
 
+{% block title %}Мониторинг{% endblock %}
+
+{% block topbar_right %}
+  <button id="btn-add" class="btn primary">+ Добавить камеру</button>
+{% endblock %}
+
+{% block content %}
   <main class="container wide">
     <section class="panel">
       <div class="panel-head">
@@ -85,7 +71,8 @@
       </form>
     </div>
   </div>
+{% endblock %}
 
+{% block scripts %}
   <script src="/static/js/app.js"></script>
-</body>
-</html>
+{% endblock %}

@@ -1,25 +1,13 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Пространственная модель — PALEVO</title>
-  <link rel="stylesheet" href="/static/css/style.css">
-</head>
-<body>
-  <header class="topbar">
-    <a class="brand" href="/"><span class="dot"></span> PALEVO</a>
-    <nav class="nav">
-      <a href="/" class="nav-link">Камеры</a>
-      <a href="/employees" class="nav-link">Сотрудники</a>
-      <a href="/presence" class="nav-link">Присутствие</a>
-      <a href="/unknown" class="nav-link">Посторонние</a>
-      <a href="/global" class="nav-link">Люди</a>
-      <a href="/spatial-model" class="nav-link active">Пространство</a>
-    </nav>
-    <span id="sp-status" class="muted small"></span>
-  </header>
+{% extends "base.html" %}
+{% set active_page = 'spatial' %}
 
+{% block title %}Пространственная модель{% endblock %}
+
+{% block topbar_right %}
+  <span id="sp-status" class="muted small"></span>
+{% endblock %}
+
+{% block content %}
   <main class="container wide sp-container">
     <section class="panel">
       <div class="sp-toolbar">
@@ -52,10 +40,11 @@
       <aside class="panel sp-side" id="sp-side"></aside>
     </div>
   </main>
+{% endblock %}
 
+{% block scripts %}
   <script src="/static/js/spatial_map.js"></script>
   <script src="/static/js/spatial_editor.js"></script>
   <script src="/static/js/spatial_calibration.js"></script>
   <script src="/static/js/spatial_model.js"></script>
-</body>
-</html>
+{% endblock %}

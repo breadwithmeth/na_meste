@@ -1,45 +1,47 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Global — PALEVO</title>
-  <link rel="stylesheet" href="/static/css/style.css">
-</head>
-<body>
-  <header class="topbar">
-    <a class="brand" href="/"><span class="dot"></span> PALEVO</a>
-    <nav class="nav">
-      <a href="/" class="nav-link">Камеры</a>
-      <a href="/employees" class="nav-link">Сотрудники</a>
-      <a href="/presence" class="nav-link">Присутствие</a>
-      <a href="/unknown" class="nav-link">Посторонние</a>
-      <a href="/global" class="nav-link active">Люди</a>
-      <a href="/spatial-model" class="nav-link">Пространство</a>
-    </nav>
-    <span id="gp-title" class="muted">Global</span>
-  </header>
+{% extends "base.html" %}
+{% set active_page = 'global' %}
 
+{% block title %}Global{% endblock %}
+
+{% block topbar_right %}
+  <span id="gp-title" class="muted">Global</span>
+{% endblock %}
+
+{% block content %}
   <main class="container wide">
     <!-- Шапка личности -->
     <section class="panel">
       <div class="gp-head">
         <img id="gp-avatar" class="gp-avatar-lg" alt="" hidden>
         <div class="gp-head-info">
-          <h2 id="gp-name" style="margin:0 0 6px">G#…</h2>
+          <h2 id="gp-name">G#…</h2>
           <div id="gp-meta" class="muted small"></div>
         </div>
       </div>
     </section>
 
+    <!-- Привязка сотрудника -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Сотрудник</h2>
+        <span class="muted small">Если распознавание не сработало, но вы знаете, кто это — свяжите личность с сотрудником вручную</span>
+      </div>
+      <form id="employee-form" class="merge-form">
+        <select id="employee-select"></select>
+        <button type="submit" class="btn primary">Связать</button>
+        <button type="button" id="employee-unlink" class="btn ghost" hidden>Отвязать</button>
+        <span id="employee-status" class="muted small"></span>
+      </form>
+    </section>
+
     <!-- Траектория -->
-    <section class="panel" style="margin-top:16px">
+    <section class="panel">
       <div class="panel-head"><h2>Траектория</h2></div>
       <div id="trajectory" class="trajectory"></div>
     </section>
 
     <!-- Объединение личностей -->
-    <section class="panel" style="margin-top:16px">
+    <section class="panel">
       <div class="panel-head">
         <h2>Объединение</h2>
         <span class="muted small">Если один и тот же человек получил два global_id — влейте лишний сюда</span>
@@ -52,7 +54,7 @@
     </section>
 
     <!-- Таймлайн -->
-    <section class="panel" style="margin-top:16px">
+    <section class="panel">
       <div class="panel-head">
         <h2>Таймлайн</h2>
         <span class="muted small">Наблюдения (со снимками) и события — переходы между камерами</span>
@@ -68,8 +70,9 @@
       <div id="timeline-empty" class="empty">Наблюдений пока нет.</div>
     </section>
   </main>
+{% endblock %}
 
+{% block scripts %}
   <script>window.GLOBAL_ID = {{ global_id }};</script>
   <script src="/static/js/global_person_detail.js"></script>
-</body>
-</html>
+{% endblock %}

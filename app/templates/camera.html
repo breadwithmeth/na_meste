@@ -1,25 +1,13 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Камера — PALEVO</title>
-  <link rel="stylesheet" href="/static/css/style.css">
-</head>
-<body>
-  <header class="topbar">
-    <a class="brand" href="/"><span class="dot"></span> PALEVO</a>
-    <nav class="nav">
-      <a href="/" class="nav-link active">Камеры</a>
-      <a href="/employees" class="nav-link">Сотрудники</a>
-      <a href="/presence" class="nav-link">Присутствие</a>
-      <a href="/unknown" class="nav-link">Посторонние</a>
-      <a href="/global" class="nav-link">Люди</a>
-      <a href="/spatial-model" class="nav-link">Пространство</a>
-    </nav>
-    <span id="camera-title" class="muted">Камера</span>
-  </header>
+{% extends "base.html" %}
+{% set active_page = 'cameras' %}
 
+{% block title %}Камера{% endblock %}
+
+{% block topbar_right %}
+  <span id="camera-title" class="muted">Камера</span>
+{% endblock %}
+
+{% block content %}
   <main class="container view">
     <div class="video-panel">
       <img id="stream" src="/api/cameras/{{ camera_id }}/stream" alt="Живой поток камеры">
@@ -45,8 +33,9 @@
       <p class="muted small">RTSP → FFmpeg → MJPEG + AI (YOLO → трекинг → лица). Статус обновляется каждые 2 сек.</p>
     </aside>
   </main>
+{% endblock %}
 
+{% block scripts %}
   <script>window.CAMERA_ID = {{ camera_id }};</script>
   <script src="/static/js/camera.js"></script>
-</body>
-</html>
+{% endblock %}

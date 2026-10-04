@@ -1,4 +1,4 @@
-// PALEVO — посторонние: галерея зафиксированных неопознанных людей.
+// посторонние: галерея зафиксированных неопознанных людей.
 
 const gridEl = document.getElementById('unknown-grid');
 const emptyEl = document.getElementById('empty');

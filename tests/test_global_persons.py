@@ -11,6 +11,7 @@
 - employee_id попадает в БД при распознавании уже привязанного трека;
 - событие person_lost при истечении gallery_ttl;
 - merge: перенос наблюдений/событий/фиксаций, память менеджера;
+- ручная привязка/отвязка сотрудника (БД + память + 404);
 - API: фильтры списка, аватар, имена камер в переходах, траектория.
 """
 import sys
@@ -265,6 +266,44 @@ def test_merge_employee_and_conflict_flag():
     with SessionFactory() as db:
         result = api.api_merge_global_person(1, 2, db=db, manager=manager2)
     assert result["employee_id"] == 7, "employee source переносится в target"
+
+
+@test
+def test_assign_employee_api_and_memory():
+    manager, reid = fresh()
+    reid.set_person(0)
+    manager.process(1, Outcome(Det(track_id=1)), FRAME, now=0.5)
+    assert manager._identities[1].employee_id is None
+
+    with SessionFactory() as db:
+        result = api.api_assign_employee(1, 7, db=db, manager=manager)
+    assert result["employee_id"] == 7
+    assert result["employee_name"] == "Иван Петров"
+
+    # БД и память синхронны: периодический _db_update_person активной
+    # identity не должен вернуть None (причина ручной привязки)
+    assert manager._identities[1].employee_id == 7
+    manager._db_update_person(manager._identities[1])
+    with SessionFactory() as db:
+        assert db.get(GlobalPerson, 1).employee_id == 7
+
+    # отвязка — тоже в БД и памяти
+    with SessionFactory() as db:
+        result = api.api_unassign_employee(1, db=db, manager=manager)
+    assert result["employee_id"] is None
+    assert manager._identities[1].employee_id is None
+    with SessionFactory() as db:
+        assert db.get(GlobalPerson, 1).employee_id is None
+
+    # привязка к несуществующим сущностям
+    with SessionFactory() as db:
+        expect_http(404, api.api_assign_employee, 1, 999, db=db, manager=None)
+        expect_http(404, api.api_assign_employee, 999, 7, db=db, manager=None)
+
+    # менеджера нет (AI выключен) — БД всё равно обновляется
+    with SessionFactory() as db:
+        result = api.api_assign_employee(1, 7, db=db, manager=None)
+    assert result["employee_id"] == 7
 
 
 @test

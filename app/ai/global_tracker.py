@@ -320,6 +320,17 @@ class GlobalIdentityManager:
         logger.info("Global: merge global_id=%d вливается в global_id=%d",
                     source_id, target_id)
 
+    def assign_employee(self, global_id: int, employee_id: Optional[int]) -> None:
+        """Ручная привязка/отвязка сотрудника (БД-часть делает API):
+        обновить identity в памяти, иначе периодический _db_update_person
+        активной личности затрёт global_persons.employee_id значением из
+        памяти (None при несработавшем распознавании)."""
+        with self._lock:
+            identity = self._identities.get(global_id)
+            if identity is not None:
+                identity.employee_id = employee_id
+        logger.info("Global: G#%d → employee_id=%s (вручную)", global_id, employee_id)
+
     # ------------------------------------------------------------- матчинг
 
     def _bind_new_track(self, camera_id, det, frame, w, h, now) -> None:

@@ -324,6 +324,7 @@ def build_ai_worker(
         min_confirmations=settings.min_confirmations,
         retry_interval=settings.face_recognition_retry_interval,
         track_lost_timeout=settings.track_lost_timeout,
+        tracker_high_threshold=settings.tracker_new_track_threshold,
     )
     state = DetectionState()
     logger.info("AI Provider: %s", provider_label(detector.session.get_providers()))

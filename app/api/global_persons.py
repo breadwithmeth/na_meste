@@ -194,6 +194,42 @@ def api_merge_global_person(
     return row
 
 
+def _set_employee(db: Session, global_id: int, employee_id: int | None,
+                  manager) -> dict:
+    """Общая часть привязки/отвязки: правка БД + синхронизация identity
+    в памяти воркера, чтобы периодический sync не вернул None."""
+    person = _person_or_404(db, global_id)
+    if employee_id is not None and db.get(Employee, employee_id) is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    person.employee_id = employee_id
+    db.commit()
+    if manager is not None:
+        try:
+            manager.assign_employee(global_id, employee_id)
+        except Exception:
+            logger.exception("Global: assign в памяти не выполнен (БД уже обновлена)")
+    return _rows(db, [person])[0]
+
+
+@router.put("/{global_id}/employee/{employee_id}")
+def api_assign_employee(
+    global_id: int, employee_id: int,
+    db: Session = Depends(get_db), manager=Depends(get_global_manager),
+):
+    """Связать личность с сотрудником: ручная коррекция, когда распознавание
+    лиц не сработало, но оператор знает, кто это (например, «G#184 — Иван»)."""
+    return _set_employee(db, global_id, employee_id, manager)
+
+
+@router.delete("/{global_id}/employee")
+def api_unassign_employee(
+    global_id: int,
+    db: Session = Depends(get_db), manager=Depends(get_global_manager),
+):
+    """Снять привязку личности к сотруднику (сотрудник больше не она)."""
+    return _set_employee(db, global_id, None, manager)
+
+
 @router.get("/{global_id}/timeline")
 def api_global_timeline(global_id: int, limit: int = 200, db: Session = Depends(get_db)):
     """Хронология: наблюдения + события (переходы и т.п.), свежие сверху."""
