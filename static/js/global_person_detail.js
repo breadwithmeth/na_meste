@@ -41,9 +41,6 @@ async function loadPerson() {
     meta.push(`Сотрудник: <a href="/employees/${p.employee_id}">${p.employee_name || '#' + p.employee_id}</a>`);
   }
   meta.push(`Наблюдений: <b>${p.observations_count}</b>`);
-  if (p.unknown_events_count > 0) {
-    meta.push(`<a href="/unknown?global_id=${p.global_id}">фиксаций постороннего: ${p.unknown_events_count}</a>`);
-  }
   meta.push(`Последняя камера: <b>${p.last_camera_name || (p.last_camera_id ? '#' + p.last_camera_id : '—')}</b>`);
   meta.push(`Последнее наблюдение: ${fmtDateTime(p.last_seen_at)}`);
   meta.push(`Создана: ${fmtDateTime(p.created_at)}`);
@@ -276,7 +273,7 @@ $('merge-form').addEventListener('submit', async (e) => {
     const moved = data.moved || {};
     status.textContent =
       `G#${data.merged_from} влит: наблюдений +${moved.observations ?? 0},` +
-      ` событий +${moved.events ?? 0}, фиксаций +${moved.unknown_events ?? 0}` +
+      ` событий +${moved.events ?? 0}` +
       (data.employee_conflict ? ' · внимание: у личностей были разные сотрудники!' : '');
     $('merge-source').value = '';
     loadPerson();

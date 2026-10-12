@@ -324,8 +324,7 @@ def api_camera_snapshot(
     db: Session = Depends(get_db),
     manager: ReaderManager = Depends(get_manager),
 ):
-    """Один статичный JPEG-кадр из буфера ридера — для калибровки камеры
-    на /spatial-model (кликать точки по кадру)."""
+    """Один статичный JPEG-кадр из буфера ридера."""
     camera = _camera_or_404(db, camera_id)
     reader = manager.get(camera.id)
     frame = None

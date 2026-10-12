@@ -98,17 +98,6 @@ async function load() {
     const count = document.createElement('td');
     count.textContent = String(p.observations_count);
 
-    const unknown = document.createElement('td');
-    if (p.unknown_events_count > 0) {
-      const uLink = document.createElement('a');
-      uLink.href = `/unknown?global_id=${p.global_id}`;
-      uLink.textContent = String(p.unknown_events_count);
-      uLink.title = 'Фиксации постороннего — показать';
-      unknown.appendChild(uLink);
-    } else {
-      unknown.textContent = '—';
-    }
-
     const seen = document.createElement('td');
     seen.textContent = fmtDateTime(p.last_seen_at);
 
@@ -119,7 +108,7 @@ async function load() {
     openLink.textContent = 'Открыть';
     open.appendChild(openLink);
 
-    tr.append(photo, idTd, status, emp, cam, count, unknown, seen, open);
+    tr.append(photo, idTd, status, emp, cam, count, seen, open);
     tbody.appendChild(tr);
   }
 }

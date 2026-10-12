@@ -4,10 +4,6 @@ const cameraId = window.CAMERA_ID;
 const $ = (id) => document.getElementById(id);
 const boxesEl = $('boxes');
 
-const ACTION_LABELS = {
-  standing: 'стоит', walking: 'идёт', sitting: 'сидит', lying: 'лежит',
-  eating: 'ест/пьёт', phone: 'телефон', working: 'работает', resting: 'отдыхает',
-};
 async function refresh() {
   let cam;
   try {
@@ -60,32 +56,6 @@ function labelFor(track) {
   return `${base} [${tag}]`;
 }
 
-function attrChipsFor(track) {
-  const chips = [];
-  // одежда: свотчи верх/низ
-  if (track.upper_color || track.lower_color) {
-    const parts = [];
-    if (track.upper_color) {
-      parts.push(`<span class="swatch" style="background:${track.upper_hex || '#888'}"></span>${track.upper_color}`);
-    }
-    if (track.lower_color) {
-      parts.push(`<span class="swatch" style="background:${track.lower_hex || '#888'}"></span>${track.lower_color}`);
-    }
-    chips.push(`<span class="attr-chip">${parts.join('<span class="swatch-sep">·</span>')}</span>`);
-  }
-  // пол и возраст
-  if (track.gender || track.age != null) {
-    const person = [track.gender, track.age != null ? `~${track.age}` : null]
-      .filter(Boolean).join(' ');
-    chips.push(`<span class="attr-chip">${person}</span>`);
-  }
-  // предметы при человеке (нож, рюкзак, чашка…)
-  for (const item of track.items || []) {
-    chips.push(`<span class="attr-chip attr-item">${item}</span>`);
-  }
-  return chips.join('');
-}
-
 async function refreshBoxes() {
   let data;
   try {
@@ -109,36 +79,6 @@ async function refreshBoxes() {
     const label = document.createElement('span');
     label.className = 'bbox-label';
     label.textContent = labelFor(track);
-    box.appendChild(label);
-
-    // действие человека (сидит/работает/отдыхает/…) — чипом внутри бокса
-    if (track.action && ACTION_LABELS[track.action]) {
-      const chip = document.createElement('span');
-      chip.className = `act-chip act-${track.action}`;
-      chip.textContent = ACTION_LABELS[track.action];
-      box.appendChild(chip);
-    }
-    // атрибуты внешности (цвет одежды, пол/возраст, предметы) — чипами
-    const attrRow = document.createElement('span');
-    attrRow.className = 'attr-row';
-    attrRow.innerHTML = attrChipsFor(track);
-    if (attrRow.innerHTML) box.appendChild(attrRow);
-    boxesEl.appendChild(box);
-  }
-
-  // предметы сцены (еда на столе, посуда, оружие, носимые вещи)
-  for (const obj of data.objects || []) {
-    const [x1, y1, x2, y2] = obj.bbox;
-    const box = document.createElement('div');
-    box.className = `objbox objbox-${obj.category}`;
-    box.style.left = (x1 * 100) + '%';
-    box.style.top = (y1 * 100) + '%';
-    box.style.width = ((x2 - x1) * 100) + '%';
-    box.style.height = ((y2 - y1) * 100) + '%';
-
-    const label = document.createElement('span');
-    label.className = 'bbox-label';
-    label.textContent = `${obj.label_ru} ${obj.confidence != null ? obj.confidence.toFixed(2) : ''}`;
     box.appendChild(label);
     boxesEl.appendChild(box);
   }

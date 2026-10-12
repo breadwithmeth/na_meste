@@ -9,13 +9,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Корень проекта — папка, в которой лежит main.py
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Пресет OBJECT_CLASSES (пустое значение .env): оружие/посуда/еда/носимые/стол
-DEFAULT_OBJECT_CLASSES = (
-    "knife,scissors,fork,spoon,bowl,cup,wine glass,bottle,"
-    "banana,apple,sandwich,orange,broccoli,carrot,hot dog,pizza,donut,cake,"
-    "dining table,backpack,handbag,suitcase,umbrella,cell phone,laptop"
-)
-
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -60,16 +53,13 @@ class Settings(BaseSettings):
     insightface_root: str = "."             # модели лежат в ./models/<имя_пакета>
     cuda_dll_path: str = ""                 # путь к CUDA/cuDNN DLL (пусто — авто-поиск)
 
-    # --- Telegram и фиксация посторонних ---
+    # --- Telegram ---
     telegram_enabled: bool = True
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""              # пусто — авто-определение по /start в группе
-    telegram_notify_unknown: bool = True    # посторонний (с фото)
     telegram_notify_presence: bool = True   # сотрудник пришёл / ушёл
     telegram_notify_global_transition: bool = True  # человек перешёл между камерами (с фото)
-    telegram_notify_global_new: bool = False        # новый global_id (дублирует «посторонних»)
-    unknown_event_cooldown: float = 60.0    # сек между фиксациями на одной камере
-    unknown_keep_days: int = 30             # сколько дней хранить события
+    telegram_notify_global_new: bool = False        # уведомление о каждой новой глобальной личности
 
     # --- Межкамерный трекинг (Multi-Camera Person Tracking) ---
     multi_camera_tracking_enabled: bool = True
@@ -90,111 +80,6 @@ class Settings(BaseSettings):
     w_topology: float = 0.15
     w_aspect: float = 0.05
     w_face: float = 0.10
-
-    # --- Распознавание действий (поза → сидит/работает/отдыхает/кушает…) ---
-    # Опциональный слой НАД трекингом: раз в ACTION_INTERVAL секунд для трека
-    # оценивается поза (yolov8n-pose) и классифицируется действие.
-    action_recognition_enabled: bool = True
-    action_model: str = "models/yolov8n-pose.onnx"
-    action_interval: float = 1.0        # сек между оценками позы на трек
-    action_smooth_seconds: float = 6.0  # окно голосования действий, сек
-    action_pose_confidence: float = 0.30  # мин. уверенность ключевой точки
-    action_log_interval: float = 10.0   # сек между записями в БД без смены действия
-    action_rest_after: float = 15.0     # сек сидения без активности рук → «отдыхает»
-    action_keep_days: int = 30          # хранение action_observations
-
-    # --- 2.5D Spatial World Model (метрическая модель помещения) ---
-    # Опциональный слой НАД существующим трекингом: foot point → гомография →
-    # мировые координаты → spatial/temporal/direction-оценки в матчинге.
-    # При включении действует профиль весов из ТЗ: final = w_reid*reid
-    # + w_spatial*spatial + w_temporal*temporal(физическая) + w_direction*direction
-    # (topology/aspect/face — веса fallback-режима без spatial-данных).
-    spatial_model_enabled: bool = False
-    spatial_obs_interval: float = 1.0     # сек между записями spatial_observations на трек
-    spatial_trajectory_len: int = 30      # точек в траектории трека (~6 с при 5 FPS)
-    spatial_ema_alpha: float = 0.4        # сглаживание позиции (EMA)
-    spatial_max_speed: float = 2.0        # м/с — потолок скорости человека для проверок времени
-    spatial_keep_days: int = 30           # хранение spatial_observations
-    w_spatial: float = 0.25               # вес spatial-оценки в матчинге
-    w_direction: float = 0.10             # вес направления движения
-
-    # --- Распознавание предметов и атрибутов внешности ---
-    # Предметы (еда на столе, посуда, оружие-нож/ножницы, носимые вещи):
-    # та же YOLO-проходка, что и для людей, — лишнего инференса нет.
-    object_detection_enabled: bool = True
-    # csv имён COCO; пусто = пресет ниже (еда/посуда/оружие/носимые/стол)
-    object_classes: str = ""
-    object_confidence: float = 0.40       # порог YOLO для предметов
-    # Слот для своей модели оружия (COCO не содержит пистолетов): путь к ONNX
-    # с выходом YOLOv8 + имена классов по порядку id. Пусто = только COCO.
-    weapon_model: str = ""
-    weapon_classes: str = ""              # например "pistol,rifle"
-    weapon_confidence: float = 0.45
-    # Произвольные сторонние модели (YOLO-совместимый ONNX) для классов,
-    # которых нет в COCO: чипсы/снеки, фирменная упаковка и т.п.
-    # Формат: "путь|имя_класса,имя_класса|категория|порог" через ";" между
-    # моделями; категория (weapon/food/carried/other…) и порог необязательны.
-    # Пример: models/snacks.onnx|chips bag,snack bag|food|0.30
-    extra_models: str = ""
-    weapon_alert_enabled: bool = True     # Telegram-алерт с фото
-    weapon_alert_cooldown: float = 60.0   # сек между алертами на камеру+метку
-    object_keep_days: int = 30            # хранение object_observations
-    # Атрибуты внешности человека: цвет одежды (кроп бокса, без моделей),
-    # пол/возраст (genderage из buffalo_l, уже на диске).
-    attributes_enabled: bool = True
-    attributes_interval: float = 0.5      # сек между сэмплами цвета на трек
-    attributes_log_interval: float = 30.0  # сек между записями в БД
-    appearance_keep_days: int = 30        # хранение appearance_observations
-    gender_age_enabled: bool = True       # загрузить genderage в FaceEngine
-
-    def object_class_ids(self) -> list[int]:
-        """COCO id предметов: из OBJECT_CLASSES, пусто — пресет
-        (еда/посуда/оружие-нож/носимые/стол). Неизвестные имена игнорируются.
-        Включение/выключение слоя — OBJECT_DETECTION_ENABLED."""
-        raw = self.object_classes.strip() or DEFAULT_OBJECT_CLASSES
-        from app.ai.detector import COCO_CLASS_IDS
-        ids = set()
-        for part in raw.replace(";", ",").split(","):
-            name = part.strip().lower()
-            if name in COCO_CLASS_IDS:
-                ids.add(COCO_CLASS_IDS[name])
-        return sorted(ids)
-
-    def weapon_class_names(self) -> list[str]:
-        """Имена классов своей оружейной модели (порядок = id выхода)."""
-        return [
-            p.strip() for p in self.weapon_classes.replace(";", ",").split(",")
-            if p.strip()
-        ]
-
-    def extra_model_specs(self) -> list[dict]:
-        """Разбор EXTRA_MODELS: список {"path", "classes", "category",
-        "confidence"}. Формат записи: путь|классы|категория|порог — поля
-        после пути необязательны (категория по умолчанию other, порог —
-        OBJECT_CONFIDENCE). Записи разделяются ';'."""
-        specs = []
-        for chunk in self.extra_models.split(";"):
-            parts = [p.strip() for p in chunk.split("|") if p.strip()]
-            if not parts:
-                continue
-            if len(parts) < 2:
-                # модель без списка классов бесполезна — имена не сопоставить
-                continue
-            category = parts[2] if len(parts) > 2 else "other"
-            try:
-                confidence = float(parts[3]) if len(parts) > 3 else None
-            except ValueError:
-                confidence = None
-            specs.append({
-                "path": parts[0],
-                "classes": [
-                    c.strip() for c in parts[1].replace(";", ",").split(",")
-                    if c.strip()
-                ],
-                "category": category,
-                "confidence": confidence,
-            })
-        return specs
 
     def ai_camera_ids(self) -> set[int] | None:
         """Идентификаторы камер для AI; None = все."""

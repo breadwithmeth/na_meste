@@ -32,8 +32,6 @@ class Track:
         "track_id", "bbox", "score", "state", "last_seen", "hits", "is_new",
         "employee_id", "employee_conf", "candidate_id", "candidate_count",
         "last_recog_attempt", "best_unknown_sim", "first_seen",
-        "unknown_reported", "unknown_fails",
-        "gender", "gender_votes", "age",
     )
 
     def __init__(self, track_id: int, bbox: np.ndarray, score: float, now: float):
@@ -53,14 +51,6 @@ class Track:
         self.candidate_count = 0
         self.last_recog_attempt: float = 0.0
         self.best_unknown_sim: Optional[float] = None
-        # фиксация постороннего: одно событие на трек
-        self.unknown_reported = False
-        self.unknown_fails = 0
-        # атрибуты внешности (genderage, заполняет RecognitionService):
-        # голосование по последним детекциям лица, возраст — EMA
-        self.gender: Optional[int] = None      # 0 = женщина, 1 = мужчина
-        self.gender_votes: list[int] = []
-        self.age: Optional[float] = None
 
 
 class ByteTracker:

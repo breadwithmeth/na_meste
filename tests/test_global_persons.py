@@ -10,7 +10,7 @@
 - last_seen_at в БД обновляется (не застревает на моменте создания);
 - employee_id попадает в БД при распознавании уже привязанного трека;
 - событие person_lost при истечении gallery_ttl;
-- merge: перенос наблюдений/событий/фиксаций, память менеджера;
+- merge: перенос наблюдений/событий, память менеджера;
 - ручная привязка/отвязка сотрудника (БД + память + 404);
 - API: фильтры списка, аватар, имена камер в переходах, траектория.
 """
@@ -34,7 +34,7 @@ from app.api import global_persons as api
 from app.database.database import Base
 from app.database import models as db_models  # noqa: F401 — регистрация таблиц
 from app.database.models import (
-    Camera, Employee, GlobalEvent, GlobalObservation, GlobalPerson, UnknownEvent,
+    Camera, Employee, GlobalEvent, GlobalObservation, GlobalPerson,
 )
 from app.services.presence_service import utcnow
 
@@ -103,14 +103,6 @@ def expect_http(code: int, fn, *args, **kwargs):
         assert exc.status_code == code, f"ожидали HTTP {code}, получили {exc.status_code}"
         return
     raise AssertionError(f"ожидали HTTP {code}, вызов прошёл без ошибки")
-
-
-def seed_unknown(global_id: int, n: int = 1) -> None:
-    with SessionFactory() as db:
-        for _ in range(n):
-            db.add(UnknownEvent(camera_id=1, track_id=9, global_id=global_id,
-                                snapshot=b"jpg"))
-        db.commit()
 
 
 # ------------------------------------------------------------------- тесты
@@ -211,22 +203,19 @@ def test_merge_api_and_memory():
     time.sleep(0.01)
     reid.set_person(1)
     manager.process(1, Outcome(Det(track_id=9)), FRAME, now=10.0)
-    seed_unknown(global_id=2, n=2)
     assert set(manager._identities) == {1, 2}
 
     with SessionFactory() as db:
         result = api.api_merge_global_person(1, 2, db=db, manager=manager)
 
     assert result["merged_from"] == 2
-    assert result["moved"] == {"observations": 1, "events": 1, "unknown_events": 2}
+    assert result["moved"] == {"observations": 1, "events": 1}
     assert not result.get("employee_conflict")
     with SessionFactory() as db:
         assert db.get(GlobalPerson, 2) is None, "source должен быть удалён"
         assert db.query(GlobalObservation).filter_by(global_id=2).count() == 0
         assert db.query(GlobalEvent).filter_by(global_id=2).count() == 0
-        assert db.query(UnknownEvent).filter_by(global_id=2).count() == 0
         assert db.query(GlobalObservation).filter_by(global_id=1).count() == 2
-        assert db.query(UnknownEvent).filter_by(global_id=1).count() == 2
         target = db.get(GlobalPerson, 1)
         assert target.last_camera_id == 1    # source был свежее (t=10 > t=0.5)
     # память: галерея объединена, привязки переключены, source исчез
@@ -317,7 +306,6 @@ def test_list_filters_and_fields():
     time.sleep(0.01)
     reid.set_person(0)   # G#1 снова замечен на камере 2 → ACTIVE
     manager.process(2, Outcome(Det(track_id=3)), FRAME, now=6.0)
-    seed_unknown(global_id=2, n=3)
 
     with SessionFactory() as db:
         rows = api.api_list_global_persons(db=db)
@@ -325,7 +313,6 @@ def test_list_filters_and_fields():
         by_id = {r["global_id"]: r for r in rows}
         assert by_id[1]["has_photo"] is True
         assert by_id[1]["observations_count"] == 2
-        assert by_id[2]["unknown_events_count"] == 3
         assert by_id[2]["employee_name"] == "Иван Петров"
         assert by_id[2]["last_camera_name"] == "Камера 2"
 

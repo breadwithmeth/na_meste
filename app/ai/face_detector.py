@@ -19,8 +19,6 @@ class FaceInfo:
     det_score: float          # уверенность детекции
     embedding: np.ndarray     # 512-d, L2-нормирован (косинус = скалярное произведение)
     aligned: np.ndarray       # выровненное лицо 112x112 BGR (для миниатюры)
-    gender: Optional[int] = None    # 0 = женщина, 1 = мужчина (genderage)
-    age: Optional[float] = None     # примерный возраст (genderage)
 
 
 class FaceEngine:
@@ -34,20 +32,14 @@ class FaceEngine:
         providers: Optional[list[str]] = None,
         det_size: int = 640,
         det_thresh: float = 0.5,
-        genderage: bool = False,
     ):
         from insightface.app import FaceAnalysis  # импорт тяжёлый — лениво
 
-        # genderage (пол/возраст) входит в пакет buffalo_l и уже на диске:
-        # модуль включается по флагу и не требует скачивания.
-        modules = ["detection", "recognition"]
-        if genderage:
-            modules.append("genderage")
         self.app = FaceAnalysis(
             name=model_name,
             root=root,
             providers=providers or ["CPUExecutionProvider"],
-            allowed_modules=modules,
+            allowed_modules=["detection", "recognition"],
         )
         self.app.prepare(ctx_id=0, det_size=(det_size, det_size), det_thresh=det_thresh)
         providers_used = "?"
@@ -81,14 +73,10 @@ class FaceEngine:
                     aligned = norm_crop(img_bgr, np.asarray(kps), image_size=112)
                 except Exception:
                     aligned = None
-            gender = getattr(f, "gender", None)
-            age = getattr(f, "age", None)
             result.append(FaceInfo(
                 bbox=np.asarray(f.bbox, dtype=np.float32),
                 det_score=float(f.det_score),
                 embedding=np.asarray(embedding, dtype=np.float32),
                 aligned=aligned,
-                gender=int(gender) if gender is not None else None,
-                age=float(age) if age is not None else None,
             ))
         return result

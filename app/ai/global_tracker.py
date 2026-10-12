@@ -7,13 +7,6 @@ composite score:
     final = w_reid*reid + w_temporal*temporal + w_topology*topology
           + w_aspect*aspect + w_face*face
 
-При включённой 2.5D-модели (spatial=…) и наличии spatial-данных действует
-профиль ТЗ §9: final = w_reid*reid + w_spatial*spatial +
-w_temporal*temporal(физическая осуществимость) + w_direction*direction.
-Spatial-модель отвечает «мог ли человек физически оказаться здесь?» и
-может наложить veto (невозможное расстояние/время, другой этаж без
-лестницы) — Re-ID при этом не единственный источник решения.
-
 Ложное слияние опаснее лишнего global_id (ТЗ §10): при неоднозначности
 (два кандидата с близкими оценками) илиscore ниже порога создаётся НОВЫЙ
 global_id, а сомнительный матч записывается в payload для анализа.
@@ -165,15 +158,11 @@ class TrackBinding:
 
 class GlobalIdentityManager:
     def __init__(self, session_factory, reid: PersonReID,
-                 topology: Optional[CameraTopology] = None, notifier=None,
-                 spatial=None):
+                 topology: Optional[CameraTopology] = None, notifier=None):
         self._session_factory = session_factory
         self.reid = reid
         self.topology = topology
         self.notifier = notifier
-        # 2.5D Spatial World Model (опционально): spatial/temporal/direction
-        # оценки + veto физически невозможных переходов (ТЗ §9-§12)
-        self.spatial = spatial
         self._identities: dict[int, GlobalIdentity] = {}
         self._bindings: dict[tuple[int, int], TrackBinding] = {}
         self._next_id = 1
@@ -371,21 +360,6 @@ class GlobalIdentityManager:
         _dbg("[IDENTITY] camera=%d track=%d → global_id=%d (%s)",
              camera_id, det.track_id, identity.global_id,
              "match" if scores.get("matched", False) else "new")
-        # решение в debug ring buffer 2.5D-модели (ТЗ §19): оценки, вердикт
-        # и причины spatial-отказов — доступно в /api/spatial/debug/matches
-        if self.spatial is not None:
-            try:
-                self.spatial.record_match_decision({
-                    "camera_id": camera_id,
-                    "track_id": det.track_id,
-                    "global_id": identity.global_id,
-                    "previous_camera": previous_camera,
-                    "decision": "MATCHED" if scores.get("matched", False)
-                                else "NEW_IDENTITY",
-                    "scores": scores,
-                })
-            except Exception:
-                logger.exception("Global: не записать spatial-решение матча")
 
     def _refresh_embedding(self, binding: TrackBinding, camera_id, det,
                            frame, w, h, now) -> None:
@@ -478,11 +452,10 @@ class GlobalIdentityManager:
         """Composite matching по всем живым identity.
 
         Возвращает (global_id | None, similarity, детализация оценок).
-        Veto: конфликт employee (лицо), физически невозможный переход,
+        Veto: конфликт employee (лицо), невозможный переход по топологии,
         одновременное присутствие на одной камере.
         """
         ranked: list[tuple[float, float, int, dict]] = []
-        spatial_rejects: list[dict] = []   # причины spatial-отказов (§19)
         with self._lock:
             identities = list(self._identities.values())
         for identity in identities:
@@ -518,84 +491,36 @@ class GlobalIdentityManager:
                      identity.global_id, identity.last_camera, camera_id, dt)
                 continue
 
-            # 2.5D-модель: «мог ли человек физически оказаться здесь?»
-            # veto — невозможное расстояние/время или другой этаж без
-            # stairs/elevator; иначе spatial/temporal/direction оценки
-            spatial_eval = None
-            if self.spatial is not None:
-                spatial_eval = self.spatial.evaluate(
-                    identity.global_id, camera_id, det.track_id, now)
-                if spatial_eval is not None and spatial_eval.veto:
-                    _dbg("[MATCH] veto spatial: gid=%d (%s)",
-                         identity.global_id, spatial_eval.reason)
-                    spatial_rejects.append({
-                        "global_id": identity.global_id,
-                        "reid": round(float(reid_sim), 3),
-                        "reason": spatial_eval.reason,
-                    })
-                    continue
+            temporal_score = max(0.0, 1.0 - dt / settings.global_gallery_ttl)
+            aspect_score = self._aspect_score(det, identity)
+            face_score = self._face_score(det, identity)
 
-            if spatial_eval is not None and spatial_eval.available:
-                # профиль ТЗ §9: reid + spatial + temporal(физическая
-                # осуществимость) + direction; topology/aspect/face —
-                # веса fallback-режима без spatial-данных
-                temporal_score = spatial_eval.temporal
-                final = (
-                    settings.w_reid * reid_sim
-                    + settings.w_spatial * spatial_eval.spatial
-                    + settings.w_temporal * temporal_score
-                    + settings.w_direction * spatial_eval.direction
-                )
-                scores = {
-                    "reid": round(float(reid_sim), 3),
-                    "spatial": round(spatial_eval.spatial, 3),
-                    "temporal": round(temporal_score, 3),
-                    "direction": round(spatial_eval.direction, 3),
-                    "final": round(final, 3),
-                    "gap_seconds": round(dt, 1),
-                    "spatial_details": spatial_eval.details,
-                }
-                if spatial_eval.reason:
-                    scores["spatial_note"] = spatial_eval.reason
-                _dbg("[MATCH] track=%d candidate_global_id=%d similarity=%.3f "
-                     "spatial=%.3f temporal=%.3f direction=%.3f final=%.3f",
-                     det.track_id, identity.global_id, reid_sim,
-                     spatial_eval.spatial, temporal_score,
-                     spatial_eval.direction, final)
-            else:
-                temporal_score = max(0.0, 1.0 - dt / settings.global_gallery_ttl)
-                aspect_score = self._aspect_score(det, identity)
-                face_score = self._face_score(det, identity)
-
-                final = (
-                    settings.w_reid * reid_sim
-                    + settings.w_temporal * temporal_score
-                    + settings.w_topology * topology_score
-                    + settings.w_aspect * aspect_score
-                    + settings.w_face * face_score
-                )
-                scores = {
-                    "reid": round(float(reid_sim), 3),
-                    "temporal": round(temporal_score, 3),
-                    "topology": round(topology_score, 3),
-                    "aspect": round(aspect_score, 3),
-                    "face": round(face_score, 3),
-                    "final": round(final, 3),
-                    "gap_seconds": round(dt, 1),
-                }
-                _dbg("[MATCH] track=%d candidate_global_id=%d similarity=%.3f "
-                     "temporal_score=%.3f topology_score=%.3f final_score=%.3f",
-                     det.track_id, identity.global_id, reid_sim,
-                     temporal_score, topology_score, final)
+            final = (
+                settings.w_reid * reid_sim
+                + settings.w_temporal * temporal_score
+                + settings.w_topology * topology_score
+                + settings.w_aspect * aspect_score
+                + settings.w_face * face_score
+            )
+            scores = {
+                "reid": round(float(reid_sim), 3),
+                "temporal": round(temporal_score, 3),
+                "topology": round(topology_score, 3),
+                "aspect": round(aspect_score, 3),
+                "face": round(face_score, 3),
+                "final": round(final, 3),
+                "gap_seconds": round(dt, 1),
+            }
+            _dbg("[MATCH] track=%d candidate_global_id=%d similarity=%.3f "
+                 "temporal_score=%.3f topology_score=%.3f final_score=%.3f",
+                 det.track_id, identity.global_id, reid_sim,
+                 temporal_score, topology_score, final)
             ranked.append((final, reid_sim, identity.global_id, scores))
 
         if not ranked:
-            return None, 0.0, {"spatial_rejects": spatial_rejects} \
-                if spatial_rejects else {}
+            return None, 0.0, {}
         ranked.sort(key=lambda r: -r[0])
         final, sim, gid, scores = ranked[0]
-        if spatial_rejects:
-            scores = {**scores, "spatial_rejects": spatial_rejects}
         # неоднозначность: два кандидата с близкими оценками — не сливаем (ТЗ §10)
         if len(ranked) > 1 and (final - ranked[1][0]) < settings.global_match_margin:
             logger.info(

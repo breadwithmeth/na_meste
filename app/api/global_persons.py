@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.database.database import get_db
 from app.database.models import (
-    Camera, Employee, GlobalEvent, GlobalObservation, GlobalPerson, UnknownEvent,
+    Camera, Employee, GlobalEvent, GlobalObservation, GlobalPerson,
 )
 from app.services.presence_service import iso_local
 
@@ -39,8 +39,8 @@ def get_global_manager(request: Request):
 
 
 def _rows(db: Session, persons: list[GlobalPerson]) -> list[dict]:
-    """Строки для списка/карточки: имена, счётчики наблюдений и фиксаций
-    посторонних, наличие снимка — батч-запросами по id страницы."""
+    """Строки для списка/карточки: имена, счётчик наблюдений, наличие
+    снимка — батч-запросами по id страницы."""
     if not persons:
         return []
     ids = [p.id for p in persons]
@@ -49,9 +49,6 @@ def _rows(db: Session, persons: list[GlobalPerson]) -> list[dict]:
     obs_counts = dict(db.query(GlobalObservation.global_id, func.count(GlobalObservation.id))
                       .filter(GlobalObservation.global_id.in_(ids))
                       .group_by(GlobalObservation.global_id).all())
-    unknown_counts = dict(db.query(UnknownEvent.global_id, func.count(UnknownEvent.id))
-                          .filter(UnknownEvent.global_id.in_(ids))
-                          .group_by(UnknownEvent.global_id).all())
     has_photo = {row[0] for row in db.query(GlobalObservation.global_id)
                  .filter(GlobalObservation.global_id.in_(ids),
                          GlobalObservation.snapshot.isnot(None))
@@ -66,7 +63,6 @@ def _rows(db: Session, persons: list[GlobalPerson]) -> list[dict]:
             "last_camera_name": cameras.get(p.last_camera_id),
             "last_track_id": p.last_track_id,
             "observations_count": obs_counts.get(p.id, 0),
-            "unknown_events_count": unknown_counts.get(p.id, 0),
             "has_photo": p.id in has_photo,
             "created_at": iso_local(p.created_at),
             "last_seen_at": iso_local(p.last_seen_at),
@@ -143,8 +139,8 @@ def api_merge_global_person(
     """Объединить личности: G#source вливается в G#global_id (target).
 
     Дробление identity — осознанная стратегия матчинга (ложное слияние
-    опаснее лишнего ID), поэтому фрагменты устраняются вручную: наблюдения,
-    события и фиксации посторонних переносятся на target, source удаляется.
+    опаснее лишнего ID), поэтому фрагменты устраняются вручную: наблюдения
+    и события переносятся на target, source удаляется.
     """
     if global_id == source_id:
         raise HTTPException(status_code=400,
@@ -161,9 +157,6 @@ def api_merge_global_person(
             .update({"global_id": global_id}, synchronize_session=False),
         "events": db.query(GlobalEvent)
             .filter(GlobalEvent.global_id == source_id)
-            .update({"global_id": global_id}, synchronize_session=False),
-        "unknown_events": db.query(UnknownEvent)
-            .filter(UnknownEvent.global_id == source_id)
             .update({"global_id": global_id}, synchronize_session=False),
     }
     if target.employee_id is None and source.employee_id is not None:

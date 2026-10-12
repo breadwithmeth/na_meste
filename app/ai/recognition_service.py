@@ -17,15 +17,12 @@ from typing import Optional
 
 import numpy as np
 
-from app.ai.detector import PERSON_CLASS_ID, PersonDetector, RawDetection
+from app.ai.detector import PersonDetector
 from app.ai.face_detector import FaceEngine
 from app.ai.face_recognition import EmbeddingStore
-from app.ai.objects import SceneObject, build_scene_objects
 from app.ai.tracker import ByteTracker, Track
 
 logger = logging.getLogger("app.ai.service")
-
-GENDER_LABELS = {0: "женщина", 1: "мужчина"}
 
 
 @dataclass
@@ -39,20 +36,6 @@ class DetectionResult:
     state: str                      # recognized | unknown | detecting
     just_confirmed: bool = False    # подтверждён именно на этом кадре
     global_id: Optional[int] = None # проставляет GlobalIdentityManager (межкамерный слой)
-    # действие человека — проставляет ActionRecognizer (слой распознавания
-    # действий): standing/walking/sitting/lying/eating/phone/working/resting
-    action: Optional[str] = None
-    action_confidence: Optional[float] = None
-    action_since: Optional[float] = None  # epoch сек — начало текущего действия
-    # атрибуты внешности — проставляют RecognitionService (genderage) и
-    # AttributeExtractor (цвет одежды), SceneObjectTracker (items)
-    gender: Optional[str] = None          # «мужчина» | «женщина»
-    age: Optional[int] = None
-    upper_color: Optional[str] = None     # цвет одежды, торс
-    upper_hex: Optional[str] = None
-    lower_color: Optional[str] = None     # цвет одежды, ноги
-    lower_hex: Optional[str] = None
-    items: list[str] = field(default_factory=list)  # «нож», «рюкзак», …
 
 
 @dataclass
@@ -60,11 +43,6 @@ class FrameOutcome:
     detections: list[DetectionResult] = field(default_factory=list)
     # (track_id, employee_id, confidence) — только что подтверждённые
     new_recognitions: list[tuple[int, int, float]] = field(default_factory=list)
-    # (track_id, bbox_xyxy абсолютные) — зафиксированные посторонние
-    unknown_events: list[tuple[int, np.ndarray]] = field(default_factory=list)
-    # предметы сцены (еда/посуда/оружие/носимые, bbox 0..1) — обрабатывает
-    # SceneObjectTracker; заполняется, когда включена детекция предметов
-    objects: list[SceneObject] = field(default_factory=list)
 
 
 class RecognitionService:
@@ -80,8 +58,6 @@ class RecognitionService:
         track_lost_timeout: float = 3.0,
         min_hits: int = 2,
         tracker_high_threshold: float = 0.5,
-        object_class_ids: Optional[list[int]] = None,
-        extra_detectors: Optional[list[tuple[PersonDetector, Optional[str]]]] = None,
     ):
         self.detector = detector
         self.faces = face_engine
@@ -92,11 +68,6 @@ class RecognitionService:
         self.track_lost_timeout = track_lost_timeout
         self.min_hits = min_hits
         self.tracker_high_threshold = tracker_high_threshold
-        # детекция предметов: классы COCO (None = только люди) + сторонние
-        # модели [(детектор, принудительная категория | None)]: оружейный
-        # слот и произвольные EXTRA_MODELS (чипсы/снеки и т.п.)
-        self.object_class_ids = set(object_class_ids or ()) or None
-        self.extra_detectors = extra_detectors or []
         self._trackers: dict[int, ByteTracker] = {}
         self._lock = threading.Lock()  # на случай нескольких AI-воркеров
 
@@ -106,20 +77,7 @@ class RecognitionService:
         now = time.monotonic() if now is None else now
         h, w = frame.shape[:2]
 
-        if self.object_class_ids is not None:
-            # одна инференс-проходка сразу на людей и предметы
-            all_dets: list[RawDetection] = self.detector.detect_all(frame)
-            persons = [
-                (d.bbox, d.score) for d in all_dets if d.class_id == PERSON_CLASS_ID
-            ]
-            outcome_objects = build_scene_objects(all_dets, self.detector.name_of, w, h)
-            for extra_detector, forced_category in self.extra_detectors:
-                outcome_objects += build_scene_objects(
-                    extra_detector.detect_all(frame),
-                    extra_detector.name_of, w, h, forced_category)
-        else:
-            persons = self.detector.detect(frame)
-            outcome_objects = []
+        persons = self.detector.detect(frame)
         with self._lock:
             tracker = self._trackers.setdefault(
                 camera_id,
@@ -129,7 +87,6 @@ class RecognitionService:
             tracks = tracker.update(persons, now)
 
         outcome = FrameOutcome()
-        outcome.objects = outcome_objects
         for track in tracks:
             if track.is_new:
                 logger.info("Camera %d: person detected track=%d", camera_id, track.track_id)
@@ -142,17 +99,6 @@ class RecognitionService:
             ):
                 track.last_recog_attempt = now
                 self._try_recognize(track, frame, camera_id, now, outcome)
-
-            # фиксация постороннего: неопознан после нескольких попыток
-            # (или долго трекается без распознавания — лицо не видно)
-            if (
-                track.employee_id is None
-                and not track.unknown_reported
-                and track.last_recog_attempt > 0
-                and (track.unknown_fails >= 2 or now - track.first_seen >= 15.0)
-            ):
-                track.unknown_reported = True
-                outcome.unknown_events.append((track.track_id, track.bbox.copy()))
 
             outcome.detections.append(self._to_result(track, w, h))
         return outcome
@@ -187,7 +133,6 @@ class RecognitionService:
             return  # лицо не видно (повёрнут/спиной) — попробуем позже
 
         face = faces[0]
-        self._collect_attributes(track, face)
         employee_id, similarity = self.store.best_match(face.embedding)
         if employee_id is not None and similarity >= self.min_confidence:
             if track.candidate_id == employee_id:
@@ -210,18 +155,6 @@ class RecognitionService:
             track.candidate_id = None
             track.candidate_count = 0
             track.best_unknown_sim = similarity
-            track.unknown_fails += 1
-
-    def _collect_attributes(self, track: Track, face) -> None:
-        """Пол (голосование по последним детекциям лица) и возраст (EMA)."""
-        if face.gender is not None:
-            track.gender_votes.append(face.gender)
-            del track.gender_votes[:-3]
-            votes = track.gender_votes
-            track.gender = 1 if 2 * sum(votes) >= len(votes) else 0
-        if face.age is not None:
-            track.age = face.age if track.age is None else \
-                0.7 * track.age + 0.3 * face.age
 
     def _to_result(self, track: Track, frame_w: int, frame_h: int) -> DetectionResult:
         x1, y1, x2, y2 = track.bbox
@@ -244,6 +177,4 @@ class RecognitionService:
                 min(1.0, x2 / frame_w), min(1.0, y2 / frame_h),
             ),
             state=state,
-            gender=GENDER_LABELS.get(track.gender),
-            age=round(track.age) if track.age is not None else None,
         )
