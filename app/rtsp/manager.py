@@ -3,8 +3,6 @@ import logging
 import threading
 from typing import Optional
 
-from sqlalchemy.orm import Session
-
 from app.config import resolve_ffmpeg, settings
 from app.database.models import Camera
 from app.rtsp.dahua import build_rtsp_url
@@ -106,13 +104,6 @@ class ReaderManager:
             "reconnect_count": 0,
             "error": None,
         }
-
-    def startup_from_db(self, session: Session) -> None:
-        """Автозапуск: подключить все включённые камеры из базы."""
-        cameras = session.query(Camera).filter(Camera.enabled.is_(True)).all()
-        for camera in cameras:
-            self.start(camera)
-        logger.info("Автозапуск: подключено камер из базы — %d", len(cameras))
 
     def stop_all(self) -> None:
         with self._lock:

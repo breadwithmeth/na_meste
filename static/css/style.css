@@ -562,6 +562,75 @@ main > .panel + .panel { margin-top: 20px; }
 .bbox .act-chip.act-phone { color: #6EE7DE; }
 .bbox .act-chip.act-lying { color: var(--vid-err); }
 
+/* ---------- атрибуты внешности (цвет одежды, пол/возраст, предметы) ---------- */
+.attr-row {
+  position: absolute;
+  top: 30px; left: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 260px;
+}
+.attr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  border-radius: 9999px;
+  padding: 3px 8px;
+  white-space: nowrap;
+  background: rgba(20, 18, 24, 0.75);
+  color: #E8DEF8;
+}
+.attr-chip.attr-item { color: #FFB59D; }   /* предметы при человеке */
+.swatch {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  flex: none;
+}
+.swatch-row { display: inline-flex; align-items: center; gap: 5px; }
+.swatch-sep { opacity: 0.6; }
+
+/* ---------- предметы сцены (еда, посуда, оружие, носимые вещи) ---------- */
+.objbox {
+  position: absolute;
+  border: 2px solid var(--vid-warn);
+  border-radius: 8px;
+  border-style: dashed;
+}
+.objbox .bbox-label { top: -22px; left: -2px; color: var(--vid-warn); }
+.objbox-weapon { border-color: var(--vid-err); border-style: solid; }
+.objbox-weapon .bbox-label { color: var(--vid-err); }
+.objbox-food { border-color: #FFB59D; }
+.objbox-food .bbox-label { color: #FFB59D; }
+.objbox-carried { border-color: #D0BCFF; }
+.objbox-carried .bbox-label { color: #D0BCFF; }
+.objbox-furniture { border-color: #7CB2FF; }
+.objbox-furniture .bbox-label { color: #7CB2FF; }
+
+/* страница «Предметы»: категории и свотчи */
+.obj-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: 9999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface-variant);
+}
+.obj-chip.obj-weapon { background: #F9DEDC; color: #410E0B; }
+.obj-chip.obj-food { background: #FFDCC2; color: #6F3C00; }
+.obj-chip.obj-tableware { background: #FCE9B8; color: #5C4300; }
+.obj-chip.obj-carried { background: #EADDFF; color: #4A148C; }
+.obj-chip.obj-furniture { background: #D3E3FD; color: #1B4B8F; }
+
 /* ---------- сотрудники ---------- */
 .employee-list { list-style: none; margin: 0; padding: 0; }
 .employee-row {

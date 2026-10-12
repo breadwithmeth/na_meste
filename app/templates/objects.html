@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% set active_page = 'objects' %}
+
+{% block title %}Предметы{% endblock %}
+
+{% block content %}
+  <main class="container">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Сейчас на камерах</h2>
+        <span id="live-summary" class="muted"></span>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="live-table">
+          <thead>
+            <tr><th>Предмет</th><th>Категория</th><th>Камера</th><th>Уверенность</th><th>При ком</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="live-empty" class="empty">Предметов в кадре сейчас нет.</div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>История предметов</h2>
+        <select id="category-filter" style="color:inherit">
+          <option value="">все категории</option>
+          <option value="weapon">оружие</option>
+          <option value="food">еда</option>
+          <option value="tableware">посуда</option>
+          <option value="carried">носимые вещи</option>
+          <option value="furniture">мебель</option>
+          <option value="other">прочее</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="history-table">
+          <thead>
+            <tr><th>Время</th><th>Предмет</th><th>Категория</th><th>Камера</th><th>Кем замечен</th><th>Фото</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="history-empty" class="empty">Истории пока нет.</div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Внешность людей</h2>
+        <span class="muted small">последний известный облик: одежда, пол, возраст</span>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="appearance-table">
+          <thead>
+            <tr><th>Кто</th><th>Камера</th><th>Верх</th><th>Низ</th><th>Пол / возраст</th><th>Когда</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="appearance-empty" class="empty">Наблюдений внешности пока нет.</div>
+    </section>
+  </main>
+{% endblock %}
+
+{% block scripts %}
+  <script src="/static/js/objects.js"></script>
+{% endblock %}

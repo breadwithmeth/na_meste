@@ -209,6 +209,7 @@ def api_camera_detections(
             "camera_id": camera_id,
             "updated_at": None,
             "tracks": [],
+            "objects": [],
             "people_count": 0,
             "known_count": 0,
             "unknown_count": 0,

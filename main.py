@@ -18,9 +18,11 @@ from app.ai.face_recognition import EmbeddingStore
 from app.ai.providers import provider_label
 from app.ai.worker import build_ai_worker, build_enroll_engine
 from app.api.actions import router as actions_router
+from app.api.appearance import router as appearance_router
 from app.api.cameras import router as cameras_router
 from app.api.employees import router as employees_router
 from app.api.global_persons import router as global_persons_router
+from app.api.objects import router as objects_router
 from app.api.presence import router as presence_router
 from app.api.spatial import router as spatial_router
 from app.api.unknown import router as unknown_router
@@ -40,11 +42,9 @@ logger = logging.getLogger("app")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # startup: таблицы + автоподключение всех включённых камер из базы
+    # startup: только таблицы; камеры подключаются вручную (создание/сохранение в UI)
     init_db()
     app.state.manager = ReaderManager()
-    with SessionLocal() as session:
-        app.state.manager.startup_from_db(session)
 
     # --- Telegram-уведомления ---
     app.state.telegram = None
@@ -119,6 +119,8 @@ app.include_router(presence_router)
 app.include_router(unknown_router)
 app.include_router(global_persons_router)
 app.include_router(actions_router)
+app.include_router(objects_router)
+app.include_router(appearance_router)
 app.include_router(spatial_router)
 
 
@@ -154,6 +156,11 @@ async def presence_page(request: Request):
 @app.get("/actions", include_in_schema=False)
 async def actions_page(request: Request):
     return templates.TemplateResponse(request, "actions.html", {})
+
+
+@app.get("/objects", include_in_schema=False)
+async def objects_page(request: Request):
+    return templates.TemplateResponse(request, "objects.html", {})
 
 
 @app.get("/unknown", include_in_schema=False)

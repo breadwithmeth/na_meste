@@ -196,6 +196,61 @@ class ActionObservation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
+class ObjectObservation(Base):
+    """Наблюдение предмета сцены (еда на столе, посуда, оружие, носимые
+    вещи): пишется слоем предметов с кулдауном на камеру+метку.
+    snapshot — JPEG-кроп объекта, только для оружия (доказательство для
+    UI/Telegram)."""
+    __tablename__ = "object_observations"
+    __table_args__ = (
+        Index("ix_obj_obs_created", "created_at"),
+        Index("ix_obj_obs_label", "label", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    camera_id: Mapped[int] = mapped_column(
+        ForeignKey("cameras.id", ondelete="CASCADE"), index=True
+    )
+    track_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    employee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("employees.id", ondelete="SET NULL"), nullable=True
+    )
+    global_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    label: Mapped[str] = mapped_column(String(40))            # COCO/модель: knife…
+    category: Mapped[str] = mapped_column(String(20))         # weapon/food/…
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    snapshot: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class AppearanceObservation(Base):
+    """Наблюдение внешности человека: цвет одежды (верх/низ), пол и возраст
+    (genderage). Пишется слоем атрибутов при смене облика и далее с
+    троттлингом ATTRIBUTES_LOG_INTERVAL. Позволяет искать «кто был в
+    синей куртке» по истории камер."""
+    __tablename__ = "appearance_observations"
+    __table_args__ = (
+        Index("ix_app_obs_created", "created_at"),
+        Index("ix_app_obs_emp", "employee_id", "created_at"),
+        Index("ix_app_obs_gid", "global_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    camera_id: Mapped[int] = mapped_column(
+        ForeignKey("cameras.id", ondelete="CASCADE"), index=True
+    )
+    track_id: Mapped[int] = mapped_column(Integer)
+    employee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("employees.id", ondelete="SET NULL"), nullable=True
+    )
+    global_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    upper_color: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    lower_color: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    gender: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    age: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 # ------------------------------------------------- 2.5D Spatial World Model
 #
 # Метрическая модель помещения: X — горизонталь, Y — глубина, Z — высота
